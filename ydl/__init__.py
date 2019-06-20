@@ -15,7 +15,13 @@ def download(*vid, write_all_thumbnails=True, add_metadata=True, writeinfojson=T
 	idx = 0
 	for vid in vids:
 		idx += 1
-		ytid, year, artist, title = vid
+		if len(vid) == 4:
+			ytid, year, artist, title = vid
+		elif len(vid) == 3:
+			ytid, artist, title = vid
+			year = None
+		else:
+			raise TypeError("Video contains wrong info: '%s'" % (str(vid),))
 
 		print("Processing %d of %d: %s by %s at %s" % (idx,len(vids),title,artist,ytid))
 
