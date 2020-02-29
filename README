@@ -28,7 +28,7 @@ Lastly, include convert_mp3=True to invoke ffmpeg to convert the downloaded file
 	skip_download=False
 	skip_if_exists=True
 	skip_if_fails=True
-	convert_mp3=False):
+	convert_mp3=False
 
 Example:
 
