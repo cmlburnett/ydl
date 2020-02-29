@@ -1,0 +1,37 @@
+Wrapper for youtube-dl module
+
+	https://github.com/ytdl-org/youtube-dl
+
+that simplifies calling it to download from youtube.
+
+	import ydl
+	ydl.download([('dQw4w9WgXcQ', 'Rick Astley', 'Never Gonna Give You Up')])
+
+Or if a numerous are supplied in the list:
+
+	import ydl
+	ydl.download([
+		('dQw4w9WgXcQ', 'Rick Astley', 'Never Gonna Give You Up'),
+		('yPYZpwSpKmA', 'Rick Astley', 'Together Forever'),
+	])
+
+By default, this downloads the thumbnails, metadata, annotations, descipription, and JSON info.
+If the vidoe file is already downloaded, then it is skipped.
+If there is an error if a single entry then it, by default, skips it and continues on with the remainder.
+Lastly, include convert_mp3=True to invoke ffmpeg to convert the downloaded file into an mp3.
+
+	write_all_thumbnails=True
+	add_metadata=True
+	writeinfojson=True
+	writedescription=True
+	writeannotations=True
+	skip_download=False
+	skip_if_exists=True
+	skip_if_fails=True
+	convert_mp3=False):
+
+Example:
+
+	import ydl
+	ydl.download([('dQw4w9WgXcQ', 'Rick Astley', 'Never Gonna Give You Up')], convert_mp3=True)
+
