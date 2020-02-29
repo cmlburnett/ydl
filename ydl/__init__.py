@@ -4,7 +4,28 @@ import sys
 import traceback
 import youtube_dl
 
-def download(*vid, write_all_thumbnails=True, add_metadata=True, writeinfojson=True, writedescription=True, writeannotations=True, skip_download=False, skip_if_exists=True, skip_if_fails=True, convert_mp3=False):
+def download(*vid, write_all_thumbnails=True, add_metadata=True, writeinfojson=True, writedescription=True, writeannotations=True, skip_download=False, skip_if_exists=True, skip_if_fails=True, convert_mp3=False, rate=900000):
+	"""
+	Download from youtube using youtube_dl module.
+		@vid -- List of unnamed parameters that are considered entries to download
+		@write_all_thumbnails -- Writes video thumbnails
+		@add_metadata -- Saves metadata
+		@writeinfojson -- Writes a JSON to file that includes title, url, formats, thumbnail URLs, description, and more
+		@writedescription -- Just the vidoe description in its own file
+		@writeannotations -- Saves video annotations as XML
+		@skip_download -- Skip downloading the video (downloads metadata though)
+		@skip_if_exists -- Skips if the MKV video file exists
+		@convert_mp3 -- Invokes ffmpeg to convert the MKV to MP3 format
+		@rate -- Maximum rate of download in bytes/sec
+
+	Download entries are 3- or 4-tuples of information.
+	- If a 3-tuple, then (YT video id, artist, title)
+	- If a 4-tuple, then (YT video id, year, artist, title)
+
+	The output file is written as "ARTIST - TITLE-YTID.mkv" and if convert_mp3 is True then the mp3 file has format
+	"ARTIST - TITLE-YTID.mp3". In the 4-tuple format, year is not currently used.
+	"""
+
 	# Collect list of failed downloads
 	# List of 3-tuples of exception information from sys.exc_info and printed out using traceback.print_exception
 	fails = []
@@ -45,7 +66,7 @@ def download(*vid, write_all_thumbnails=True, add_metadata=True, writeinfojson=T
 				'writeannotations': writeannotations,
 				'skip_download': skip_download,
 				'outtmpl': fmkv,
-				'ratelimit': 900000,
+				'ratelimit': rate,
 			}
 			with youtube_dl.YoutubeDL(opts) as dl:
 				try:
@@ -79,5 +100,4 @@ def download(*vid, write_all_thumbnails=True, add_metadata=True, writeinfojson=T
 			print("Failed download: %d of %d" % (i+1,len(fails)))
 			traceback.print_exception(*f)
 			print(80*"-")
-
 

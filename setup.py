@@ -1,7 +1,7 @@
 from distutils.core import setup
 
 majv = 1
-minv = 0
+minv = 1
 
 setup(
 	name = 'ydl',
@@ -9,10 +9,10 @@ setup(
 	description = "Python module that wraps youtube-dl",
 	author = "Colin ML Burnett",
 	author_email = "cmlburnett@gmail.com",
-	url = "",
+	url = "https://github.com/cmlburnett/ydl",
 	packages = ['ydl'],
 	package_data = {'ydl': ['ydl/__init__.py']},
 	classifiers = [
-		'Programming Language :: Python :: 3.4'
+		'Programming Language :: Python :: 3.7'
 	]
 )
