@@ -212,3 +212,58 @@ def merge_playlist(*vid, rate=900000):
 		finally:
 			os.chdir(curdir)
 
+def _findentry(ytid, vids):
+	"""
+	Helper function to find entry with YT id @ytid in list of vids (same list used to provide to download().
+	"""
+	for row in vids:
+		if row[0] == ytid:
+			return row[2] + ' - ' + row[3] + '-' + row[0]
+
+	return None
+
+def add_chapters(chapters, vids):
+	"""
+	Merge downloaded MVK files with chapter information as described in @chapters above.
+	This must go second in order to, you know, have something to merge.
+	Utilizes my custom mkvxmlmaker library and the mkvmerge CLI tool to do the work.
+
+	@chapters -- list of dictionaries where each dictionary includes 'ytid' for the YouTube ID and 'chapters' which is a list of 2-tuples containing (time of chapter start as HH:MM:SS.ssss string, chapter name).
+	@vids -- list of videos as passed to download() that is a list of tuples where first tuple item is the YouTube ID (permits extracting file name from this information without repeating it).
+	"""
+
+	idx = 0
+	for chaps in chapters:
+		idx += 1
+
+		ytid = chaps['ytid']
+		cs = chaps['chapters']
+
+		print("Processing %d of %d: %s" % (idx, len(chapters), ytid))
+
+		# Find entry as a file name
+		fname = _findentry(ytid, vids)
+		if fname is None:
+			raise ValueError("Cannot find video with id '%s'" % ytid)
+
+		# Make various file names
+		fname_mkv = fname + '.mkv'
+		fname_chaps = fname + '.chapters.xml'
+		fname_chapsmkv = fname + '.chapters.mkv'
+
+		# Already exists, skip it
+		if os.path.exists(fname_chapsmkv):
+			print("\tFound mkv: %s" % fname_chapsmkv)
+			continue
+
+		# Create XML file
+		cxml = mkvxmlmaker.MKVXML_chapter()
+		for c in cs:
+			cxml.AddChapter(*c)
+
+		# Save chapters to XML
+		cxml.Save(fname_chaps)
+
+		# Merge files
+		subprocess.run(['mkvmerge', '-o', fname_chapsmkv, '--chapters', fname_chaps, fname_mkv])
+
