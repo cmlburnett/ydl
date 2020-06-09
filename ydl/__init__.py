@@ -3,6 +3,8 @@ import youtube_dl
 
 # System libraries
 import glob
+import io
+import json
 import os
 import shutil
 import subprocess
@@ -108,6 +110,110 @@ def download(*vid, write_all_thumbnails=True, add_metadata=True, writeinfojson=T
 			print("Failed download: %d of %d" % (i+1,len(fails)))
 			traceback.print_exception(*f)
 			print(80*"-")
+
+def print_playlist(*vid):
+	"""
+	Print out the playlist information from get_playlistinfo()
+	"""
+
+	info = get_playlistinfo(*vid)
+	for plist in info:
+		print('Playlist: %s' % plist['plist'])
+
+		for vid in plist['data']:
+			print('\t[%d]: "%s" Duration=%d' % (vid['idx'], vid['title'], vid['duration']))
+
+def get_playlistinfo(*vid):
+	"""
+	Get playlist information for merging videos.
+	Takes same arguments as supplied to merge_playlist().
+
+	Each @vid argument is a list of dictionaries where each dictionary consists of:
+		plist -- Playlist ID on youtube
+		name -- Final merged file name base
+		chapters -- list of 2-tuples, but isn't needed for this function
+
+	Returns a list of dictionaries:
+		idx -- Index into @vids
+		plist -- Playlist ID on youtube
+		data -- List of dictionaries about each video:
+			idx -- Index into the playlist
+			ytid -- YouTube ID
+			title -- Video title
+			duration -- Duration of video in seconds
+	"""
+
+	# Collapse into a single list
+	vids = [item for sublist in vid for item in sublist]
+
+	ret = []
+
+	idx = 0
+	# Iterate over playlists
+	for merge in vids:
+		idx += 1
+
+		plist = merge['plist']
+
+		# It was difficult to obtain these options
+		#   extract_flat avoids downloading the playlist
+		#   dumpjson & forcejson is needed to get just the JSON information
+		#   quiet to keep youtube-dl from dumping non-JSON to output
+		opts = {
+			'extract_flat': True,
+			'dumpjson': True,
+			'forcejson': True,
+			'quiet': True,
+		}
+
+		# Have to capture the standard output
+		_stdout = sys.stdout
+		capt = sys.stdout = sys.stderr = io.StringIO()
+
+		with youtube_dl.YoutubeDL(opts) as dl:
+			dl.download(['http://www.youtube.com/playlist?list=%s' % plist])
+
+		# Restore standard output
+		sys.stdout = _stdout
+
+		# List of JSON objects, one line per video
+		lines = capt.getvalue().split('\n')
+		lines = [_ for _ in lines if len(_)] # Trim off empty newlines
+		lines = [json.loads(_) for _ in lines]
+		ytids = [_['id'] for _ in lines] # Pull out just the youtube ids
+
+		subret = []
+
+		# Iterate over the playlist items
+		subidx = 0
+		for ytid in ytids:
+			subidx += 1
+
+			opts = {
+				'dumpjson': True,
+				'forcejson': True,
+				'quiet': True,
+			}
+
+			# Have to capture the standard output
+			_stdout = sys.stdout
+			capt = sys.stdout = sys.stderr = io.StringIO()
+
+			with youtube_dl.YoutubeDL(opts) as dl:
+				dl.download(['https://www.youtube.com/watch?v=%s' % ytid])
+
+			# Restore standard output
+			sys.stdout = _stdout
+
+			# Get info from the JSON string
+			dat = capt.getvalue().split('\n')
+			j = json.loads(dat[0])
+			z = {'idx': subidx, 'ytid': ytid, 'title': j['title'], 'duration': j['duration']}
+			subret.append(z)
+
+		ret.append( {'idx': idx, 'plist': plist, 'data': subret} )
+
+	return ret
 
 def merge_playlist(*vid, rate=900000):
 	"""
