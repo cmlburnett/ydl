@@ -373,3 +373,15 @@ def add_chapters(chapters, vids):
 		# Merge files
 		subprocess.run(['mkvmerge', '-o', fname_chapsmkv, '--chapters', fname_chaps, fname_mkv])
 
+def download_one_with_chapters(info, chapters, convert_mp3=False):
+	"""
+	Download a single video and add chapters to it.
+	@info is a tuple as supplied to download()
+	@chapters is a list of chapter information as supplied to add_chapters()
+
+	Convenience function for calling these two videos.
+	"""
+
+	download([info], convert_mp3=convert_mp3)
+	add_chapters([{'ytid': info[0], 'chapters': chapters}], [info])
+

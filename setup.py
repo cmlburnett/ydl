@@ -1,7 +1,7 @@
 from distutils.core import setup
 
 majv = 1
-minv = 2
+minv = 3
 
 setup(
 	name = 'ydl',
