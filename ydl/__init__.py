@@ -2,6 +2,7 @@
 import youtube_dl
 
 # System libraries
+import contextlib
 import glob
 import io
 import json
@@ -14,7 +15,48 @@ import traceback
 # My personal library
 import mkvxmlmaker
 
-def download(*vid, write_all_thumbnails=True, add_metadata=True, writeinfojson=True, writedescription=True, writeannotations=True, skip_download=False, skip_if_exists=True, skip_if_fails=True, convert_mp3=False, rate=900000):
+class EmptyListError(Exception):
+	pass
+
+# From https://stackoverflow.com/questions/5136611/capture-stdout-from-a-script
+@contextlib.contextmanager
+def capture():
+	oldout,olderr = sys.stdout, sys.stderr
+	try:
+		out=[io.StringIO(), io.StringIO()]
+		sys.stdout,sys.stderr = out
+		yield out
+	finally:
+		sys.stdout,sys.stderr = oldout, olderr
+		out[0] = out[0].getvalue()
+		out[1] = out[1].getvalue()
+
+def download(ytid, name, dname, write_all_thumbnails=True, add_metadata=True, writeinfojson=True, writedescription=True, writeannotations=True, skip_download=False, skip_if_exists=True, skip_if_fails=True, convert_mp3=False, rate=900000):
+
+	# Options to youtube-dl library to download the video
+	opts = {
+		'merge_output_format': 'mkv',
+		'write_all_thumbnails': write_all_thumbnails,
+		'add_metadata': add_metadata,
+		'writeinfojson': writeinfojson,
+		'writedescription': writedescription,
+		'writeannotations': writeannotations,
+		'skip_download': skip_download,
+		'outtmpl': name,
+		'ratelimit': rate,
+	}
+	with youtube_dl.YoutubeDL(opts) as dl:
+		# Attempt download
+		cwd = os.getcwd()
+		try:
+			os.chdir(dname)
+			dl.download(['https://www.youtube.com/watch?v=%s'%ytid])
+		finally:
+			# Always go back to the original working directory
+			os.chdir(cwd)
+
+
+def download_group(*vid, write_all_thumbnails=True, add_metadata=True, writeinfojson=True, writedescription=True, writeannotations=True, skip_download=False, skip_if_exists=True, skip_if_fails=True, convert_mp3=False, rate=900000):
 	"""
 	Download from youtube using youtube_dl module.
 		@vid -- List of unnamed parameters that are considered entries to download
@@ -111,6 +153,45 @@ def download(*vid, write_all_thumbnails=True, add_metadata=True, writeinfojson=T
 			traceback.print_exception(*f)
 			print(80*"-")
 
+def get_info_video(ytid):
+	"""
+	Gets video information for video with YouTube id @ytid.
+	Returned is a dictionary of ytid, title, duration (in seconds), list of categories, list of tags, list of thumbnails with URLs, and description.
+	"""
+
+	opts = {
+		'skip_download': True,
+		'dumpjson': True,
+		'forcejson': True,
+		'quiet': True,
+	}
+
+	# Have to capture the standard output
+	_stdout = sys.stdout
+	_stderr = sys.stderr
+	try:
+		capt = sys.stdout = sys.stderr = io.StringIO()
+
+		with youtube_dl.YoutubeDL(opts) as dl:
+			dl.download(['https://www.youtube.com/watch?v=%s' % ytid])
+
+	finally:
+		# Restore standard output
+		sys.stdout = _stdout
+		sys.stderr = _stderr
+
+	# Get info from the JSON string
+	dat = capt.getvalue().split('\n')
+	j = json.loads(dat[0])
+	ret = {
+		'ytid': ytid,
+	}
+
+	for k in ['title', 'duration', 'uploader', 'upload_date', 'thumbnails', 'description', 'categories', 'tags']:
+		if k in j: ret[k] = j[k]
+
+	return ret
+
 def print_playlist(*vid):
 	"""
 	Print out the playlist information from get_playlistinfo()
@@ -123,24 +204,51 @@ def print_playlist(*vid):
 		for vid in plist['data']:
 			print('\t[%d]: "%s" Duration=%d' % (vid['idx'], vid['title'], vid['duration']))
 
-def get_playlistinfo(*vid):
+def get_list_user(*vid, getVideoInfo=True):
 	"""
-	Get playlist information for merging videos.
-	Takes same arguments as supplied to merge_playlist().
+	Takes a list of user from a URL of the form http://www.youtube.com/user/NAME and returns the videos on that list.
+	Returned is a list of dictionaries of 'idx' of index in the playlist and 'info' that contains get_info_video() information.
+	"""
 
-	Each @vid argument is a list of dictionaries where each dictionary consists of:
-		plist -- Playlist ID on youtube
-		name -- Final merged file name base
-		chapters -- list of 2-tuples, but isn't needed for this function
+	sub = ['http://www.youtube.com/user/%s/videos' % _ for _ in vid]
 
-	Returns a list of dictionaries:
-		idx -- Index into @vids
-		plist -- Playlist ID on youtube
-		data -- List of dictionaries about each video:
-			idx -- Index into the playlist
-			ytid -- YouTube ID
-			title -- Video title
-			duration -- Duration of video in seconds
+	return get_list(sub, getVideoInfo=getVideoInfo)
+
+def get_list_playlist(*vid, getVideoInfo=True):
+	"""
+	Takes a list of playlist ID's from a URL of the form http://www.youtube.com/playlist?list=PLIST and returns the videos on that list.
+	Returned is a list of dictionaries of 'idx' of index in the playlist and 'info' that contains get_info_video() information.
+	"""
+
+	sub = ['http://www.youtube.com/playlist?list=%s' % _ for _ in vid]
+
+	return get_list(sub, getVideoInfo=getVideoInfo)
+
+def get_list_channel(*vid, getVideoInfo=True):
+	"""
+	Takes a list of channel names from a URL of the form http://www.youtube.com/channel/NAME and returns the videos on that named channel.
+	Returned is a list of dictionaries of 'idx' of index in the playlist and 'info' that contains get_info_video() information.
+	"""
+
+	sub = ['http://www.youtube.com/channel/%s/videos/' % _ for _ in vid]
+
+	return get_list(sub, getVideoInfo=getVideoInfo)
+
+def get_list_c(*vid, getVideoInfo=True):
+	"""
+	Takes a list of unnamed channel names from a URL of the form http://www.youtube.com/c/NAME and returns the videos on that unnamed channel.
+	Returned is a list of dictionaries of 'idx' of index in the playlist and 'info' that contains get_info_video() information.
+	"""
+
+	sub = ['http://www.youtube.com/c/%s/videos/' % _ for _ in vid]
+
+	return get_list(sub, getVideoInfo=getVideoInfo)
+
+def get_list(*vid, getVideoInfo=True):
+	"""
+	Gets a list of videos from the indicated videos from URLs in @vid and returns a list of videos on each list.
+	Each list entry contains a dictionary of 'idx' and 'ytid' which are the numerical index in the list and the YouTube ID, respectively.
+	If @getVideoInfo is True, then get_info_video() is called on each video and included in the dictionary key 'info'.
 	"""
 
 	# Collapse into a single list
@@ -150,10 +258,8 @@ def get_playlistinfo(*vid):
 
 	idx = 0
 	# Iterate over playlists
-	for merge in vids:
+	for url in vids:
 		idx += 1
-
-		plist = merge['plist']
 
 		# It was difficult to obtain these options
 		#   extract_flat avoids downloading the playlist
@@ -166,21 +272,35 @@ def get_playlistinfo(*vid):
 			'quiet': True,
 		}
 
-		# Have to capture the standard output
-		_stdout = sys.stdout
-		capt = sys.stdout = sys.stderr = io.StringIO()
+		# Ok, youtube-dl sometimes is just returning an empty list and I can't figure out what
+		# error is happening. The text output says list is successfully downloaded, but then
+		# it doesn't dump any videos for the list. Some sort of graceful failing without actually
+		# indicating there was an error. I don't know if this is youtube-dl or youtube itself.
+		#
+		# Hack is to try a few times and wait for something to actually be returned.
+		ytids = []
+		for i in range(3):
+			# Have to capture the standard output
+			with capture() as capt:
+				with youtube_dl.YoutubeDL(opts) as dl:
+					dl.download([url])
 
-		with youtube_dl.YoutubeDL(opts) as dl:
-			dl.download(['http://www.youtube.com/playlist?list=%s' % plist])
+			lines = capt[0]
 
-		# Restore standard output
-		sys.stdout = _stdout
+			# List of JSON objects, one line per video
+			lines = lines.split('\n')
+			lines = [_ for _ in lines if len(_)] # Trim off empty newlines
+			lines = [json.loads(_) for _ in lines]
+			ytids = [_['id'] for _ in lines if 'id' in _] # Pull out just the youtube ids
 
-		# List of JSON objects, one line per video
-		lines = capt.getvalue().split('\n')
-		lines = [_ for _ in lines if len(_)] # Trim off empty newlines
-		lines = [json.loads(_) for _ in lines]
-		ytids = [_['id'] for _ in lines] # Pull out just the youtube ids
+			# If got something, then break
+			if len(ytids):
+				break
+
+		# Didn't get any videos (see above issue), then throw exception
+		if not len(ytids):
+			print
+			raise EmptyListError("No entries found for list '%s'" % url)
 
 		subret = []
 
@@ -189,29 +309,24 @@ def get_playlistinfo(*vid):
 		for ytid in ytids:
 			subidx += 1
 
-			opts = {
-				'dumpjson': True,
-				'forcejson': True,
-				'quiet': True,
-			}
+			# Download vidoe information
+			if getVideoInfo:
+				# Download video information
+				k = get_videoinfo(ytid)
 
-			# Have to capture the standard output
-			_stdout = sys.stdout
-			capt = sys.stdout = sys.stderr = io.StringIO()
+				z = {'idx': subidx, 'ytid': ytid}
+				z['info'] = k
 
-			with youtube_dl.YoutubeDL(opts) as dl:
-				dl.download(['https://www.youtube.com/watch?v=%s' % ytid])
+				# Appending to list
+				subret.append(z)
 
-			# Restore standard output
-			sys.stdout = _stdout
+			# Don't download video information, just do index and YT id
+			else:
+				subret.append( {'idx': subidx, 'ytid': ytid} )
 
-			# Get info from the JSON string
-			dat = capt.getvalue().split('\n')
-			j = json.loads(dat[0])
-			z = {'idx': subidx, 'ytid': ytid, 'title': j['title'], 'duration': j['duration']}
-			subret.append(z)
 
-		ret.append( {'idx': idx, 'plist': plist, 'data': subret} )
+		# Accumulate list information
+		ret.append( {'idx': idx, 'url': url, 'info': subret} )
 
 	return ret
 

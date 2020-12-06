@@ -1,7 +1,7 @@
 from distutils.core import setup
 
 majv = 1
-minv = 3
+minv = 4
 
 setup(
 	name = 'ydl',
@@ -11,7 +11,7 @@ setup(
 	author_email = "cmlburnett@gmail.com",
 	url = "https://github.com/cmlburnett/ydl",
 	packages = ['ydl'],
-	package_data = {'ydl': ['ydl/__init__.py']},
+	package_data = {'ydl': ['ydl/__init__.py', 'ydl/__main__.py']},
 	classifiers = [
 		'Programming Language :: Python :: 3.7'
 	]
