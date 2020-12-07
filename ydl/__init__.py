@@ -167,21 +167,12 @@ def get_info_video(ytid):
 	}
 
 	# Have to capture the standard output
-	_stdout = sys.stdout
-	_stderr = sys.stderr
-	try:
-		capt = sys.stdout = sys.stderr = io.StringIO()
-
+	with capture() as capt:
 		with youtube_dl.YoutubeDL(opts) as dl:
 			dl.download(['https://www.youtube.com/watch?v=%s' % ytid])
 
-	finally:
-		# Restore standard output
-		sys.stdout = _stdout
-		sys.stderr = _stderr
-
 	# Get info from the JSON string
-	dat = capt.getvalue().split('\n')
+	dat = capt[0].split('\n')
 	j = json.loads(dat[0])
 	ret = {
 		'ytid': ytid,
