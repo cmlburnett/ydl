@@ -70,6 +70,7 @@ class db(SH):
 			DBCol('ctime', 'datetime'), # Creation time (first time this video was put in the list)
 			DBCol('atime', 'datetime'), # Access time (last time this video was touched)
 			DBCol('utime', 'datetime'),  # Update time (last time anything for the video was downloaded)
+			DBCol('skip', 'bool'),
 
 			# Put long strings at the end
 			DBCol('thumbnails', 'json')
@@ -321,7 +322,7 @@ def _sync_list(d, names, f_get_list):
 					# FIXME: dname is whatever list adds it first, but should favor
 					# the channel. Can happen if a playlist is added first, then the channel
 					# the video is on is added later.
-					d.v.insert(ytid=v['ytid'], ctime=n, atime=None, dname=c_name)
+					d.v.insert(ytid=v['ytid'], ctime=n, atime=None, dname=c_name, skip=False)
 
 		except Exception:
 			traceback.print_exc()
@@ -337,9 +338,9 @@ def sync_videos(d, ignore_old):
 	"""
 
 	if ignore_old:
-		res = d.v.select(['rowid','ytid','ctime'], "utime is null")
+		res = d.v.select(['rowid','ytid','ctime','skip'], "utime is null")
 	else:
-		res = d.v.select(['rowid','ytid','ctime'], "")
+		res = d.v.select(['rowid','ytid','ctime','skip'], "")
 
 	# Convert rows to dictionaries
 	rows = [dict(_) for _ in res]
@@ -351,15 +352,29 @@ def sync_videos(d, ignore_old):
 		ytid = row['ytid']
 		rowid = row['rowid']
 		ctime = row['ctime']
+		skip = row['skip']
 
 		# print to the screen to show progress
 		print("\t%d of %d: %s" % (i+1,len(rows), ytid))
+
+		# If instructed to skip, then skip
+		# This can be done if the video is on a playlist, etc that is not available to download
+		if skip:
+			print("\t\tSkipping")
+			# This marks it as at least looked at, otherwise repeated --sync --ignore-old will keep checking
+			d.v.update({"rowid": rowid}, {"utime": _now()})
+			continue
 
 		# Get video information
 		ret = ydl.get_info_video(ytid)
 
 		# Squash non-ASCII characters (I don't like emoji in file names)
 		name = ret['title'].encode('ascii', errors='ignore').decode('ascii')
+		# Get rid of characters that are bad for file names
+		name = name.replace(':', '-')
+		name = name.replace('/', '-')
+		name = name.replace('\\', '-')
+		name = name.replace('!', '')
 
 		# Format
 		atime = _now()
@@ -448,6 +463,8 @@ def _main():
 	#p.add_argument('--json', action='store_true', default=False, help="Dump output as JSON")
 	#p.add_argument('--xml', action='store_true', default=False, help="Dump output as XML")
 	
+	p.add_argument('--skip', nargs='*', help="Skip the specified videos (supply no ids to get a list of skipped)")
+	p.add_argument('--unskip', nargs='*', help="Un-skip the specified videos (supply no ids to get a list of not skipped)")
 	p.add_argument('--sync', action='store_true', default=False, help="Sync all metadata and playlists (does not download video data)")
 	p.add_argument('--ignore-old', action='store_true', default=False, help="Ignore old list items and old videos")
 	p.add_argument('--download', action='store_true', default=False, help="Download video")
@@ -663,6 +680,50 @@ def _main():
 			raise ValueError("Unrecognize URL type %s" % (u,))
 
 	d.commit()
+
+
+
+	if args.skip is not None:
+		if not len(args.skip):
+			res = d.v.select("ytid", "`skip`=?", [True])
+			ytids = [_['ytid'] for _ in res]
+			ytids = sorted(ytids)
+
+			# FIXME: abide by --json and --xml
+			print("Videos marked skip (%d):" % len(ytids))
+			for ytid in ytids:
+				print("\t%s" % ytid)
+		else:
+			ytids = list(set(args.skip))
+			print("Marking videos to skip (%d):" % len(ytids))
+
+			d.begin()
+			for ytid in ytids:
+				print("\t%s" % ytid)
+				row = d.v.select_one("rowid", "`ytid`=?", [ytid])
+				d.v.update({"rowid": row['rowid']}, {"skip": True})
+			d.commit()
+
+	if args.unskip is not None:
+		if not len(args.unskip):
+			res = d.v.select("ytid", "`skip`=?", [False])
+			ytids = [_['ytid'] for _ in res]
+			ytids = sorted(ytids)
+
+			# FIXME: abide by --json and --xml
+			print("Videos NOT marked skip (%d):" % len(ytids))
+			for ytid in ytids:
+				print("\t%s" % ytid)
+		else:
+			ytids = list(set(args.unskip))
+			print("Marking videos to not skip (%d):" % len(ytids))
+
+			d.begin()
+			for ytid in ytids:
+				print("\t%s" % ytids)
+				row = d.v.select_one("rowid", "`ytid`=?", [ytid])
+				d.v.update({"rowid": row['rowid']}, {"skip": False})
+			d.commit()
 
 	if args.sync:
 		print("Update users")
