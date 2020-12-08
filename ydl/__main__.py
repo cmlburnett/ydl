@@ -1,22 +1,33 @@
 
+# System
 import argparse
 import datetime
+import html.parser
 import json
+import logging
 import os
 import re
-import sqlite3
 import sys
 import time
 import traceback
 import urllib
+import xml.etree.ElementTree as ET
+
+# Installed
+import requests
+import sqlite3
 import ydl
 
-import logging
 logging.basicConfig(level=logging.ERROR)
 
 from sqlitehelper import SH, DBTable, DBCol
 
 def sec_str(sec):
+	"""
+	Convert seconds to HHH:MM:SS formatted string
+	Returns as HHH:MM:SS, MM:SS, or 0:SS with zero padding except for the most significant position.
+	"""
+
 	min,sec = divmod(sec, 60)
 	hr,min = divmod(min, 60)
 
@@ -86,24 +97,32 @@ class db(SH):
 		# Playlists
 		DBTable('pl',
 			DBCol('ytid', 'text'),
+			DBCol('title', 'text'),
+			DBCol('uploader', 'text'),
 			DBCol('ctime', 'datetime'),
 			DBCol('atime', 'datetime')
 		),
 		# Named channels
 		DBTable('c',
 			DBCol('name', 'text'),
+			DBCol('title', 'text'),
+			DBCol('uploader', 'text'),
 			DBCol('ctime', 'datetime'),
 			DBCol('atime', 'datetime')
 		),
 		# Unnamed channels
 		DBTable('ch',
 			DBCol('name', 'text'),
+			DBCol('title', 'text'),
+			DBCol('uploader', 'text'),
 			DBCol('ctime', 'datetime'),
 			DBCol('atime', 'datetime')
 		),
 		# Users
 		DBTable('u',
 			DBCol('name', 'text'),
+			DBCol('title', 'text'),
+			DBCol('uploader', 'text'),
 			DBCol('ctime', 'datetime'),
 			DBCol('atime', 'datetime')
 		),
@@ -113,10 +132,15 @@ class db(SH):
 			DBCol('idx', 'integer'),
 			DBCol('atime', 'datetime'),
 		),
-	]
-	def __init__(self, fname):
-		super().__init__(fname)
 
+		# RSS feeds
+		DBTable('RSS',
+			DBCol('typ', 'text'),
+			DBCol('name', 'text'),
+			DBCol('url', 'text'),
+			DBCol('atime', 'datetime'), # Last time the RSS feed was sync'ed
+		),
+	]
 	def open(self):
 		ex = os.path.exists(self.Filename)
 
@@ -151,7 +175,7 @@ class db(SH):
 	def add_channel_unnamed(self, name):
 		return self.ch.insert(name=name, ctime=_now())
 
-def sync_channels_named(d, ignore_old):
+def sync_channels_named(d, ignore_old, rss_ok):
 	"""
 	Sync "named" channels (I don't know how else to call them) that are /c/NAME
 	as opposed to "unnamed" channels that are at /channel/NAME
@@ -159,60 +183,27 @@ def sync_channels_named(d, ignore_old):
 
 	Use the database object @d to sync all named channels.
 	If @ignore_old is True then skip those that have been sync'ed before.
+
+	If @rss_ok is True then RSS is attempted, otherwise the list is pulled down
+	As RSS feeds don't contain the entire history of a list, it is only good for incremental changes.
 	"""
 
-	# Filter based on atime being null if @ignore_old is True
-	where = ""
-	if ignore_old:
-		where = "`atime` is null"
+	_sync_list(d, d.c, 'name', ignore_old, rss_ok, ydl.get_list_c)
 
-	# Get lists
-	res = d.c.select(['rowid',"name"], where)
-
-	# Update atimes
-	d.begin()
-	rows = [dict(_) for _ in res]
-	for row in rows:
-		d.c.update({'rowid': row['rowid']}, {'atime': _now()})
-	d.commit()
-
-	# Prune it down to just the names and sort
-	rows = [_['name'] for _ in rows]
-	rows = sorted(rows)
-
-	# Sync the lists
-	_sync_list(d, rows, ydl.get_list_c)
-
-def sync_users(d, ignore_old):
+def sync_users(d, ignore_old, rss_ok):
 	"""
 	Sync user videos
 
 	Use the database object @d to sync users.
 	If @ignore_old is True then skip those that have been sync'ed before.
+
+	If @rss_ok is True then RSS is attempted, otherwise the list is pulled down
+	As RSS feeds don't contain the entire history of a list, it is only good for incremental changes.
 	"""
 
-	# Filter based on atime being null if @ignore_old is True
-	where = ""
-	if ignore_old:
-		where = "`atime` is null"
+	_sync_list(d, d.u, 'name', ignore_old, rss_ok, ydl.get_list_user)
 
-	res = d.u.select(['rowid',"name"], where)
-
-	# Update atimes
-	d.begin()
-	rows = [dict(_) for _ in res]
-	for row in rows:
-		d.u.update({'rowid': row['rowid']}, {'atime': _now()})
-	d.commit()
-
-	# Prune it down to just the names and sort
-	rows = [_['name'] for _ in rows]
-	rows = sorted(rows)
-
-	# Sync the lists
-	_sync_list(d, rows, ydl.get_list_user)
-
-def sync_channels_unnamed(d, ignore_old):
+def sync_channels_unnamed(d, ignore_old, rss_ok):
 	"""
 	Sync "unnamed" channels (I don't know how else to call them) that are /channel/NAME
 	as opposed to "named" channels that are at /c/NAME
@@ -220,35 +211,39 @@ def sync_channels_unnamed(d, ignore_old):
 
 	Use the database object @d to sync all named channels.
 	If @ignore_old is True then skip those that have been sync'ed before.
+
+	If @rss_ok is True then RSS is attempted, otherwise the list is pulled down
+	As RSS feeds don't contain the entire history of a list, it is only good for incremental changes.
 	"""
 
-	# Filter based on atime being null if @ignore_old is True
-	where = ""
-	if ignore_old:
-		where = "`atime` is null"
+	_sync_list(d, d.ch, 'name', ignore_old, rss_ok, ydl.get_list_channel)
 
-	res = d.ch.select(['rowid',"name"], where)
-
-	# Update atimes
-	d.begin()
-	rows = [dict(_) for _ in res]
-	for row in rows:
-		d.ch.update({'rowid': row['rowid']}, {'atime': _now()})
-	d.commit()
-
-	# Prune it down to just the names and sort
-	rows = [_['name'] for _ in rows]
-	rows = sorted(rows)
-
-	# Sync the lists
-	_sync_list(d, rows, ydl.get_list_channel)
-
-def sync_playlists(d, ignore_old):
+def sync_playlists(d, ignore_old, rss_ok):
 	"""
 	Sync all playlists.
 
 	Use the database object @d to sync all playlists.
 	If @ignore_old is True then skip those that have been sync'ed before.
+
+	@rss_ok is disregarded as playlists don't have RSS feeds; listed to provide consistency (maybe they will change in the future?)
+	"""
+
+	# Not applicable to playlists (no RSS)
+	rss_ok = False
+
+	_sync_list(d, d.pl, 'ytid', ignore_old, rss_ok, ydl.get_list_playlist)
+
+def _sync_list(d, d_sub, col_name, ignore_old, rss_ok, ydl_func):
+	"""
+	Sub helper function
+	@d -- main database object
+	@d_sub -- sub object that is table specific for the list being updated
+	@col_name -- name of the column in @d_sub that is the name of the list (eg, ytid, name)
+	@ignore_old -- only look at new stuff
+	@rss_ok -- can check list current-ness by using RSS
+	@ydl_func -- function in ydl library to call to sync the list
+
+	This calls __sync_list further.
 	"""
 
 	# Filter based on atime being null if @ignore_old is True
@@ -256,37 +251,114 @@ def sync_playlists(d, ignore_old):
 	if ignore_old:
 		where = "`atime` is null"
 
-	res = d.pl.select(['rowid',"ytid"], where)
+	res = d_sub.select(['rowid',col_name,'atime'], where)
+
+	# Convert to list of dict
+	rows = [dict(_) for _ in res]
+
+	# Map ytid/name to row
+	mp = {_[col_name]:_ for _ in rows}
+
+	# Supply list name and whether or not to use RSS
+	# - If new and rss_ok is False -> rss_ok False
+	# - If new and rss_ok is True -> rss_ok False
+	# - If old and rss_ok is False-> rss_ok False
+	# - If old and rss_ok is True -> rss_ok True
+	#
+	# if atime is None then it's new, if atim is not None then it's old
+	rows = [(v[col_name], v['atime'] is not None and rss_ok) for k,v in mp.items()]
+	rows = sorted(rows, key=lambda _: _[0])
+
+	summary = {
+		'done': [],
+		'error': [],
+		'info': {},
+	}
+
+	# Sync the lists
+	__sync_list(d, d_sub, rows, ydl_func, summary)
+
+	print("\tDone: %d" % len(summary['done']))
+	print("\tError: %d" % len(summary['error']))
+	for ytid in summary['error']:
+		print("\t\t%s" % ytid)
 
 	# Update atimes
 	d.begin()
-	rows = [dict(_) for _ in res]
-	for row in rows:
-		d.pl.update({'rowid': row['rowid']}, {'atime': _now()})
+	for ytid in summary['done']:
+		rowid = mp[ytid]['rowid']
+
+		d_sub.update({'rowid': rowid}, {'atime': _now(), 'title': summary['info'][ytid]['title'], 'uploader': summary['info'][ytid]['uploader']})
 	d.commit()
 
-	# Prune it down to just the names and sort
-	rows = [_['ytid'] for _ in rows]
-	rows = sorted(rows)
-
-	# Sync the lists
-	_sync_list(d, rows, ydl.get_list_playlist)
-
-def _sync_list(d, names, f_get_list):
+def __sync_list(d, d_sub, rows, f_get_list, summary):
 	"""
 	Base function that does all the list syncing.
 
 	@d is the database object
-	@names is a simple array of names to print out and reference `vids` entries to
+	@d_sub is table object in @d
+	@rows is a simple array of names & RSS ok flags to print out and reference `vids` entries to
 	@f_get_list is a function in ydl library that gets videos for the given list (as this is unique for each list type, it must be supplied
+	@rss_ok -- can check RSS first
+	@summary -- dictionary to store results of syncing each list
 	"""
 
-	for c_name in names:
-		d.begin()
-
+	for c_name, rss_ok in rows:
 		# Print the name out to show progress
 		print("\t%s" % c_name)
 
+		# If ok to check RSS, start there and if all video sthere are in the database
+		# then no need to pull down the full list
+		if rss_ok:
+			row = d.RSS.select_one("url", "`typ`=? and `name`=?", [d_sub.Name, c_name])
+			if row:
+				# Found RSS url, just use that
+				url = row['url']
+			else:
+				# Find RSS URL from the list page
+				if d_sub.Name == 'c':
+					url = _getRSSURL('http://www.youtube.com/c/%s' % c_name)
+				elif d_sub.Name == 'ch':
+					url = _getRSSURL('http://www.youtube.com/channel/%s' % c_name)
+				elif d_sub.Name == 'u':
+					url = _getRSSURL('http://www.youtube.com/user/%s' % c_name)
+				elif d_sub.Name == 'pl':
+					# Playlists don't have RSS feeds
+					url = False
+				else:
+					raise Exception("Unrecognized list type")
+
+				print("\t\tFound RSS from list page, saving to DB (%s)" % url)
+				d.begin()
+				d.RSS.insert(typ=d_sub.Name, name=c_name, url=url, atime=_now())
+				d.commit()
+
+			# Check that url was found
+			if url == False:
+				print("\t\tCan't get RSS feed")
+				# Unable to get rss feed
+				rss_ok = False
+			else:
+				print("\t\tChecking RSS (%s)" % url)
+				ret = _parseRSSURL(url)
+				if ret:
+					present = []
+					logging.basicConfig(level=logging.DEBUG)
+					for ytid in ret['ytids']:
+						row = d.vids.select_one('rowid', '`name`=? and `ytid`=?', [c_name, ytid])
+						if not row:
+							print("\t\tRSS shows new videos, obtain full list")
+							rss_ok = False
+							break
+		# If rss_ok is still True at this point then no need to check pull list
+		# If rss_ok is False, then it was False before checking RSS or was set False for error reasons
+		#  or (in particular) there are new videos to check
+		if rss_ok:
+			continue
+		else:
+			print("\t\tChecking full list")
+
+		d.begin()
 		try:
 			cur = f_get_list(c_name, getVideoInfo=False)
 			cur = cur[0]
@@ -310,7 +382,7 @@ def _sync_list(d, names, f_get_list):
 
 			# Delete all old entries that are no longer on the list
 			for ytid,rowid in old.items():
-				d.vids.delete(rowid)
+				d.vids.delete({'rowid': '?'}, [rowid])
 
 			# Update or add video to the global videos list
 			for v in cur['info']:
@@ -324,11 +396,105 @@ def _sync_list(d, names, f_get_list):
 					# the video is on is added later.
 					d.v.insert(ytid=v['ytid'], ctime=n, atime=None, dname=c_name, skip=False)
 
+			# upload playlist info
+			summary['info'][c_name] = {
+				'title': cur['title'],
+				'uploader': cur['uploader'],
+			}
+
 		except Exception:
 			traceback.print_exc()
+			summary['error'].append(c_name)
 			# Continue onward, ignore errors
 
+		# Done with this list
+		if c_name not in summary['error']:
+			summary['done'].append(c_name)
+
 		d.commit()
+
+
+
+class RSSParse(html.parser.HTMLParser):
+	"""
+	Parse an HTML page for it's RSS URL.
+	End parsing by throwing a GotRSSUrl excpetion when found.
+	"""
+	def handle_starttag(self, tag, attrs):
+		if tag == 'link':
+			attrs = dict(attrs)
+			if 'type' in attrs and attrs['type'] == 'application/rss+xml':
+				raise RSSParse.GotRSSUrl(attrs['href'])
+
+	class GotRSSUrl(Exception):
+		"""
+		Exception to return the RSS url once found when parsing HTML.
+		"""
+		pass
+
+def _getRSSURL(url):
+	"""
+	From @url, pull down the HTML and find the link tag to the RSS feed.
+	Return the URL if found, False if not found
+	"""
+
+	r = requests.get(url)
+	if r.status_code != 200:
+		return False
+
+	# Get HTML
+	html = r.text
+
+	try:
+		RSSParse().feed(html)
+
+		# Not found as parsing completed
+	except RSSParse.GotRSSUrl as r:
+		# Got RSS url (expected outcome is to throw exception and not finish parsing)
+		return str(r)
+	except:
+		# Some other error (maybe parsing error)
+		return False
+
+	return False
+
+def _parseRSSURL(url):
+	"""
+	Parse RSS feed at url @url and return the available videos from that feed.
+	"""
+
+	r = requests.get(url)
+	if r.status_code != 200:
+		return False
+
+	ret = {
+		'title': None,
+		'uploader': None,
+		'ytids': []
+	}
+
+	# Parse RSS as XML
+	root = ET.fromstring(r.text)
+
+	title = root.find('./{http://www.w3.org/2005/Atom}title')
+	if title is not None:
+		ret['title'] = title.text
+
+	uploader = root.find('./{http://www.w3.org/2005/Atom}author/{http://www.w3.org/2005/Atom}name')
+	if uploader is not None:
+		ret['uploader'] = uploader.text
+
+	entries = root.findall('./{http://www.w3.org/2005/Atom}entry')
+	for entry in entries:
+		ytid = entry.find('./{http://www.youtube.com/xml/schemas/2015}videoId').text
+		ret['ytids'].append(ytid)
+
+	return ret
+
+
+
+
+
 
 
 def sync_videos(d, ignore_old):
@@ -347,6 +513,28 @@ def sync_videos(d, ignore_old):
 	# Sort by YTID to be consistent
 	rows = sorted(rows, key=lambda x: x['ytid'])
 
+	summary = {
+		'done': [],
+		'error': [],
+		'paymentreq': [],
+	}
+
+	try:
+		_sync_videos(d, ignore_old, summary, rows)
+	except KeyboardInterrupt:
+		# Don't show exception
+		return
+	finally:
+		print("Total videos: %d" % len(rows))
+		print("Completed: %d" % len(summary['done']))
+		print("Payment required (%d):" % len(summary['paymentreq']))
+		for ytid in summary['paymentreq']:
+			print("\t%s" % ytid)
+		print("Other errors (%d):" % len(summary['error']))
+		for ytid in summary['error']:
+			print("\t%s" % ytid)
+
+def _sync_videos(d, ignore_old, summary, rows):
 	# Iterate over videos
 	for i,row in enumerate(rows):
 		ytid = row['ytid']
@@ -366,7 +554,18 @@ def sync_videos(d, ignore_old):
 			continue
 
 		# Get video information
-		ret = ydl.get_info_video(ytid)
+		try:
+			ret = ydl.get_info_video(ytid)
+		except KeyboardInterrupt:
+			# Pass it down
+			raise
+		except ydl.PaymentRequiredException:
+			summary['paymentreq'].append(ytid)
+			continue
+		except Exception as e:
+			traceback.print_exc()
+			summary['error'].append(ytid)
+			continue
 
 		# Squash non-ASCII characters (I don't like emoji in file names)
 		name = ret['title'].encode('ascii', errors='ignore').decode('ascii')
@@ -399,6 +598,9 @@ def sync_videos(d, ignore_old):
 		d.begin()
 		d.v.update({'rowid': rowid}, dat)
 		d.commit()
+
+		# Got it
+		summary['done'].append(ytid)
 
 def download_videos(d, ignore_old):
 	res = d.v.select(['rowid'], "")
@@ -453,19 +655,23 @@ def _main():
 
 	p = argparse.ArgumentParser()
 	p.add_argument('-f', '--file', default='ydl.db', help="use sqlite3 FILE (default ydl.db)")
+	p.add_argument('--stdin', action='store_true', default=False, help="Accept input on STDIN for parameters instead of arguments")
 	p.add_argument('--year', help="Year of video")
 	p.add_argument('--artist', help="Artist of the video")
 	p.add_argument('--title', help="Title of the video")
-	p.add_argument('--add', nargs='*', help="Add URL(s) to download")
+
+	p.add_argument('--add', nargs='*', default=False, help="Add URL(s) to download")
 	p.add_argument('--list', nargs='?', const=True, help="List of lists")
 	p.add_argument('--listall', action='store_true', default=False, help="When calling --list, this will list all the videos too")
-	# TODO:
-	#p.add_argument('--json', action='store_true', default=False, help="Dump output as JSON")
-	#p.add_argument('--xml', action='store_true', default=False, help="Dump output as XML")
-	
+	p.add_argument('--json', action='store_true', default=False, help="Dump output as JSON")
+	p.add_argument('--xml', action='store_true', default=False, help="Dump output as XML")
+
+	p.add_argument('--no-rss', action='store_true', default=False, help="Don't use RSS to check status of lists")
 	p.add_argument('--skip', nargs='*', help="Skip the specified videos (supply no ids to get a list of skipped)")
 	p.add_argument('--unskip', nargs='*', help="Un-skip the specified videos (supply no ids to get a list of not skipped)")
 	p.add_argument('--sync', action='store_true', default=False, help="Sync all metadata and playlists (does not download video data)")
+	p.add_argument('--sync-list', action='store_true', default=False, help="Sync just the lists (not videos)")
+	p.add_argument('--sync-videos', action='store_true', default=False, help="Sync just the videos (not lists)")
 	p.add_argument('--ignore-old', action='store_true', default=False, help="Ignore old list items and old videos")
 	p.add_argument('--download', action='store_true', default=False, help="Download video")
 	args = p.parse_args()
@@ -568,8 +774,13 @@ def _main():
 
 
 	# Check all URLs
-	if args.add:
-		for url in args.add:
+	if type(args.add) is list:
+		if args.stdin:
+			vals = [_.strip() for _ in sys.stdin.readlines()]
+		else:
+			vals = args.add
+
+		for url in vals:
 			u = urllib.parse.urlparse(url)
 			print(u)
 
@@ -689,13 +900,25 @@ def _main():
 			ytids = [_['ytid'] for _ in res]
 			ytids = sorted(ytids)
 
-			# FIXME: abide by --json and --xml
-			print("Videos marked skip (%d):" % len(ytids))
-			for ytid in ytids:
-				print("\t%s" % ytid)
+			if args.json:
+				print(json.dumps(ytids))
+			elif args.xml:
+				raise NotImplementedError("XML not implemented yet")
+			else:
+				# FIXME: abide by --json and --xml
+				print("Videos marked skip (%d):" % len(ytids))
+				for ytid in ytids:
+					print("\t%s" % ytid)
 		else:
+			# This could signify STDIN contains json or xml to intrepret as ytids???
+			if args.json:
+				raise NotImplementedError("--json not meaningful when adding skipped videos")
+			if args.xml:
+				raise NotImplementedError("--xml not meaningful when adding skipped videos")
+
 			ytids = list(set(args.skip))
 			print("Marking videos to skip (%d):" % len(ytids))
+
 
 			d.begin()
 			for ytid in ytids:
@@ -710,11 +933,21 @@ def _main():
 			ytids = [_['ytid'] for _ in res]
 			ytids = sorted(ytids)
 
-			# FIXME: abide by --json and --xml
-			print("Videos NOT marked skip (%d):" % len(ytids))
-			for ytid in ytids:
-				print("\t%s" % ytid)
+			if args.json:
+				print(json.dumps(ytids))
+			elif args.xml:
+				raise NotImplementedError("XML not implemented yet")
+			else:
+				print("Videos NOT marked skip (%d):" % len(ytids))
+				for ytid in ytids:
+					print("\t%s" % ytid)
 		else:
+			# This could signify STDIN contains json or xml to intrepret as ytids???
+			if args.json:
+				raise NotImplementedError("--json not meaningful when removing skipped videos")
+			if args.xml:
+				raise NotImplementedError("--xml not meaningful when removed skipped videos")
+
 			ytids = list(set(args.unskip))
 			print("Marking videos to not skip (%d):" % len(ytids))
 
@@ -725,19 +958,20 @@ def _main():
 				d.v.update({"rowid": row['rowid']}, {"skip": False})
 			d.commit()
 
-	if args.sync:
+	if args.sync or args.sync_list:
 		print("Update users")
-		sync_users(d, ignore_old=args.ignore_old)
+		sync_users(d, ignore_old=args.ignore_old, rss_ok=(not args.no_rss))
 
 		print("Update unnamed channels")
-		sync_channels_unnamed(d, ignore_old=args.ignore_old)
+		sync_channels_unnamed(d, ignore_old=args.ignore_old, rss_ok=(not args.no_rss))
 
 		print("Update named channels")
-		sync_channels_named(d, ignore_old=args.ignore_old)
+		sync_channels_named(d, ignore_old=args.ignore_old, rss_ok=(not args.no_rss))
 
 		print("Update playlists")
-		sync_playlists(d, ignore_old=args.ignore_old)
+		sync_playlists(d, ignore_old=args.ignore_old, rss_ok=(not args.no_rss))
 
+	if args.sync or args.sync_videos:
 		print("Sync all videos")
 		sync_videos(d, ignore_old=args.ignore_old)
 

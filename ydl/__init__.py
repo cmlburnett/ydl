@@ -15,8 +15,8 @@ import traceback
 # My personal library
 import mkvxmlmaker
 
-class EmptyListError(Exception):
-	pass
+class EmptyListError(Exception): pass
+class PaymentRequiredException(Exception): pass
 
 # From https://stackoverflow.com/questions/5136611/capture-stdout-from-a-script
 @contextlib.contextmanager
@@ -167,9 +167,14 @@ def get_info_video(ytid):
 	}
 
 	# Have to capture the standard output
-	with capture() as capt:
-		with youtube_dl.YoutubeDL(opts) as dl:
-			dl.download(['https://www.youtube.com/watch?v=%s' % ytid])
+	try:
+		with capture() as capt:
+			with youtube_dl.YoutubeDL(opts) as dl:
+				dl.download(['https://www.youtube.com/watch?v=%s' % ytid])
+	except youtube_dl.utils.DownloadError as e:
+		if "requires payment" in str(e):
+			print("\t\tPayment required, skipping")
+			raise PaymentRequiredException
 
 	# Get info from the JSON string
 	dat = capt[0].split('\n')
@@ -263,6 +268,12 @@ def get_list(*vid, getVideoInfo=True):
 			'quiet': True,
 		}
 
+		# Playlist info, if found
+		pinfo = {
+			'title': None,
+			'uploader': None,
+		}
+
 		# Ok, youtube-dl sometimes is just returning an empty list and I can't figure out what
 		# error is happening. The text output says list is successfully downloaded, but then
 		# it doesn't dump any videos for the list. Some sort of graceful failing without actually
@@ -283,6 +294,13 @@ def get_list(*vid, getVideoInfo=True):
 			lines = [_ for _ in lines if len(_)] # Trim off empty newlines
 			lines = [json.loads(_) for _ in lines]
 			ytids = [_['id'] for _ in lines if 'id' in _] # Pull out just the youtube ids
+
+			# Get playlist information
+			# FIXME: doesn't seem to find the playlist entry
+			pi = [_ for _ in lines if _['_type'] == 'playlist']
+			if pi:
+				if 'title' in pi: pinfo['title'] = pi['title']
+				if 'uploader' in pi: pinfo['uploader'] = pi['uploader']
 
 			# If got something, then break
 			if len(ytids):
@@ -317,7 +335,7 @@ def get_list(*vid, getVideoInfo=True):
 
 
 		# Accumulate list information
-		ret.append( {'idx': idx, 'url': url, 'info': subret} )
+		ret.append( {'idx': idx, 'url': url, 'info': subret, 'title': pinfo['title'], 'uploader': pinfo['uploader']} )
 
 	return ret
 
