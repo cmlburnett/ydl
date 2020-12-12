@@ -80,7 +80,7 @@ class db(SH):
 			DBCol('ptime', 'datetime'), # Upload time to youtube (whatever they say it is)
 			DBCol('ctime', 'datetime'), # Creation time (first time this video was put in the list)
 			DBCol('atime', 'datetime'), # Access time (last time this video was touched)
-			DBCol('utime', 'datetime'),  # Update time (last time anything for the video was downloaded)
+			DBCol('utime', 'datetime'), # Update time (last time anything for the video was downloaded)
 			DBCol('skip', 'bool'),
 
 			# Put long strings at the end
@@ -307,6 +307,9 @@ def __sync_list(d, d_sub, rows, f_get_list, summary):
 		# Print the name out to show progress
 		print("\t%s" % c_name)
 
+		# New list of YTID's from RSS, None if not processed
+		new = None
+
 		# If ok to check RSS, start there and if all video sthere are in the database
 		# then no need to pull down the full list
 		if rss_ok:
@@ -344,6 +347,10 @@ def __sync_list(d, d_sub, rows, f_get_list, summary):
 				if ret:
 					present = []
 					logging.basicConfig(level=logging.DEBUG)
+
+					# Save list of new YTID's
+					new = ret['ytids']
+
 					for ytid in ret['ytids']:
 						row = d.vids.select_one('rowid', '`name`=? and `ytid`=?', [c_name, ytid])
 						if not row:
@@ -367,34 +374,56 @@ def __sync_list(d, d_sub, rows, f_get_list, summary):
 			res = d.vids.select(["rowid","ytid"], "name=?", [c_name])
 			old = {r['ytid']:r['rowid'] for r in res}
 
-			# Update or add video to list in vids table
+			# Check if all are old, then skip updating
+			all_old = True
 			for v in cur['info']:
-				# Update old index
-				if v['ytid'] in old:
-					print("\t\t%d: %s (OLD)" % (v['idx'], v['ytid']))
-					d.vids.update({'rowid': old[v['ytid']]}, {'idx': v['idx'], 'atime': _now()})
+				if v['ytid'] not in old:
+					all_old = False
+					break
 
-					# Remove from the old list (anything not removed will be considered deleted from the list)
-					del old[v['ytid']]
+			# Get vieos that are new and not in the full list
+			if new:
+				weird_diff = set(new) - set([_['ytid'] for _ in cur['info']])
+			else:
+				weird_diff = []
+
+			# At least one is new
+			if all_old:
+				if weird_diff:
+					print("\t\tFound videos in RSS but not in video list, probably upcoming videos (%d)" % len(weird_diff))
+					for _ in weird_diff:
+						print("\t\t\t%s" % _)
 				else:
-					print("\t\t%d: %s (NEW)" % (v['idx'], v['ytid']))
-					d.vids.insert(name=c_name, ytid=v['ytid'], idx=v['idx'], atime=_now())
+					print("\t\tAll are old, no updates")
+			else:
+				# Update or add video to list in vids table
+				for v in cur['info']:
+					# Update old index
+					if v['ytid'] in old:
+						print("\t\t%d: %s (OLD)" % (v['idx'], v['ytid']))
+						d.vids.update({'rowid': old[v['ytid']]}, {'idx': v['idx'], 'atime': _now()})
 
-			# Delete all old entries that are no longer on the list
-			for ytid,rowid in old.items():
-				d.vids.delete({'rowid': '?'}, [rowid])
+						# Remove from the old list (anything not removed will be considered deleted from the list)
+						del old[v['ytid']]
+					else:
+						print("\t\t%d: %s (NEW)" % (v['idx'], v['ytid']))
+						d.vids.insert(name=c_name, ytid=v['ytid'], idx=v['idx'], atime=_now())
 
-			# Update or add video to the global videos list
-			for v in cur['info']:
-				vrow = d.v.select_one("rowid", "ytid=?", [v['ytid']])
-				if vrow:
-					d.v.update({'rowid': vrow['rowid']}, {'atime': None}) 
-				else:
-					n = _now()
-					# FIXME: dname is whatever list adds it first, but should favor
-					# the channel. Can happen if a playlist is added first, then the channel
-					# the video is on is added later.
-					d.v.insert(ytid=v['ytid'], ctime=n, atime=None, dname=c_name, skip=False)
+				# Delete all old entries that are no longer on the list
+				for ytid,rowid in old.items():
+					d.vids.delete({'rowid': '?'}, [rowid])
+
+				# Update or add video to the global videos list
+				for v in cur['info']:
+					vrow = d.v.select_one("rowid", "ytid=?", [v['ytid']])
+					if vrow:
+						d.v.update({'rowid': vrow['rowid']}, {'atime': None})
+					else:
+						n = _now()
+						# FIXME: dname is whatever list adds it first, but should favor
+						# the channel. Can happen if a playlist is added first, then the channel
+						# the video is on is added later.
+						d.v.insert(ytid=v['ytid'], ctime=n, atime=None, dname=c_name, skip=False)
 
 			# upload playlist info
 			summary['info'][c_name] = {
@@ -626,6 +655,11 @@ def download_videos(d, ignore_old):
 
 	for i,ytid in enumerate(ytids):
 		row = rows[ytid]
+
+		# DEBUG
+		if row['dname'] != 'NoraSvet':
+			continue
+
 		print("\t%d of %d: %s" % (i+1, len(rows), row['ytid']))
 
 		cwd = os.getcwd()
@@ -646,7 +680,7 @@ def download_videos(d, ignore_old):
 			continue
 
 		d.begin()
-		d.v.update({"rowid": row['rowid']}, {'name': name, 'utime': _now()})
+		d.v.update({"rowid": row['rowid']}, {'name': row['name'], 'utime': _now()})
 		d.commit()
 
 
@@ -770,7 +804,6 @@ def _main():
 
 		else:
 			print(args.list)
-		sys.exit(0)
 
 
 	# Check all URLs

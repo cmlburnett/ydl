@@ -506,6 +506,6 @@ def download_one_with_chapters(info, chapters, convert_mp3=False):
 	Convenience function for calling these two videos.
 	"""
 
-	download([info], convert_mp3=convert_mp3)
+	download_group([info], convert_mp3=convert_mp3)
 	add_chapters([{'ytid': info[0], 'chapters': chapters}], [info])
 
