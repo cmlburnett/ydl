@@ -2,7 +2,6 @@
 # System
 import argparse
 import datetime
-import html.parser
 import json
 import logging
 import os
@@ -11,66 +10,31 @@ import sys
 import time
 import traceback
 import urllib
-import xml.etree.ElementTree as ET
 
 # Installed
-import requests
 import sqlite3
 import ydl
 
 logging.basicConfig(level=logging.ERROR)
 
-from sqlitehelper import SH, DBTable, DBCol
+from sqlitehelper import SH, DBTable, DBCol, DBColROWID
 
-def sec_str(sec):
-	"""
-	Convert seconds to HHH:MM:SS formatted string
-	Returns as HHH:MM:SS, MM:SS, or 0:SS with zero padding except for the most significant position.
-	"""
-
-	min,sec = divmod(sec, 60)
-	hr,min = divmod(min, 60)
-
-	if hr > 0:
-		return "%d:%02d:%02d" % (hr,min,sec)
-	elif min > 0:
-		return "%d:%02d" % (min,sec)
-	else:
-		return "0:%d" % sec
+from .util import RSSHelper
+from .util import sec_str
 
 def _now():
 	""" Now """
 	return datetime.datetime.utcnow()
 
-def inputopts(txt):
-	opts = re.findall("\([a-zA-Z0-9]+\)", txt)
-	opts = [_[1:-1] for _ in opts]
-
-	default = [_ for _ in opts if _.isupper()]
-	if len(default):
-		default = default[0]
-	else:
-		default = None
-
-	opts = [_.lower() for _ in opts]
-
-	while True:
-		ret = input(txt)
-
-		if not len(ret):
-			if default:
-				return default
-			else:
-				continue
-		elif ret.lower() in opts:
-			return ret.lower()
-		else:
-			print("Option '%s' not recognized, try again" % ret)
-			continue
-
 class db(SH):
+	"""
+	DB interface that wraps sqlite3 using the sqlitehelper library.
+	Schema is declared as below.
+	"""
+
 	__schema__ = [
 		DBTable('v',
+			DBColROWID(),
 			DBCol('ytid', 'text'),
 			DBCol('name', 'text'),  # File name of the saved video
 			DBCol('dname', 'text'), # Directory the file will be saved in (based on which list it is added from first)
@@ -151,16 +115,16 @@ class db(SH):
 
 
 	def get_user(self, name):
-		return self.u.select_one("*", "name=?", [name])
+		return self.u.select_one("*", "`name`=?", [name])
 
 	def get_playlist(self, ytid):
-		return self.pl.select_one("*", "ytid=?", [ytid])
+		return self.pl.select_one("*", "`ytid`=?", [ytid])
 
 	def get_channel_named(self, name):
-		return self.c.select_one("*", "name=?", [name])
+		return self.c.select_one("*", "`name`=?", [name])
 
 	def get_channel_unnamed(self, name):
-		return self.ch.select_one("*", "name=?", [name])
+		return self.ch.select_one("*", "`name`=?", [name])
 
 
 	def add_user(self, name):
@@ -174,6 +138,22 @@ class db(SH):
 
 	def add_channel_unnamed(self, name):
 		return self.ch.insert(name=name, ctime=_now())
+
+
+	def get_v(self, filt, ignore_old):
+		if type(filt) is list and len(filt):
+			# Can provide both YTID's and channel/user names to filter by in the same list
+			# So search both ytid colum and dname (same as user name, channel name, etc)
+			where = "`ytid` in ({0}) or `dname` in ({0})".format(",".join( ["'%s'" % _ for _ in filt] ))
+
+		# If ignore old is desired, then add it to the where clause
+		if ignore_old:
+			if where: where += " AND "
+			where += "`utime` is null"
+
+		print(['where', where])
+		res = self.v.select(['rowid','ytid','name','dname','duration','title','skip','ctime','atime','utime'], where)
+		return res
 
 def sync_channels_named(d, filt, ignore_old, rss_ok):
 	"""
@@ -326,11 +306,11 @@ def __sync_list(d, d_sub, rows, f_get_list, summary):
 			else:
 				# Find RSS URL from the list page
 				if d_sub.Name == 'c':
-					url = _getRSSURL('http://www.youtube.com/c/%s' % c_name)
+					url = RSSHelper.GetByPage('http://www.youtube.com/c/%s' % c_name)
 				elif d_sub.Name == 'ch':
-					url = _getRSSURL('http://www.youtube.com/channel/%s' % c_name)
+					url = RSSHelper.GetByPage('http://www.youtube.com/channel/%s' % c_name)
 				elif d_sub.Name == 'u':
-					url = _getRSSURL('http://www.youtube.com/user/%s' % c_name)
+					url = RSSHelper.GetByPage('http://www.youtube.com/user/%s' % c_name)
 				elif d_sub.Name == 'pl':
 					# Playlists don't have RSS feeds
 					url = False
@@ -349,7 +329,7 @@ def __sync_list(d, d_sub, rows, f_get_list, summary):
 				rss_ok = False
 			else:
 				print("\t\tChecking RSS (%s)" % url)
-				ret = _parseRSSURL(url)
+				ret = RSSHelper.ParseRSS_YouTube(url)
 				if ret:
 					present = []
 					logging.basicConfig(level=logging.DEBUG)
@@ -450,86 +430,6 @@ def __sync_list(d, d_sub, rows, f_get_list, summary):
 
 
 
-class RSSParse(html.parser.HTMLParser):
-	"""
-	Parse an HTML page for it's RSS URL.
-	End parsing by throwing a GotRSSUrl excpetion when found.
-	"""
-	def handle_starttag(self, tag, attrs):
-		if tag == 'link':
-			attrs = dict(attrs)
-			if 'type' in attrs and attrs['type'] == 'application/rss+xml':
-				raise RSSParse.GotRSSUrl(attrs['href'])
-
-	class GotRSSUrl(Exception):
-		"""
-		Exception to return the RSS url once found when parsing HTML.
-		"""
-		pass
-
-def _getRSSURL(url):
-	"""
-	From @url, pull down the HTML and find the link tag to the RSS feed.
-	Return the URL if found, False if not found
-	"""
-
-	r = requests.get(url)
-	if r.status_code != 200:
-		return False
-
-	# Get HTML
-	html = r.text
-
-	try:
-		RSSParse().feed(html)
-
-		# Not found as parsing completed
-	except RSSParse.GotRSSUrl as r:
-		# Got RSS url (expected outcome is to throw exception and not finish parsing)
-		return str(r)
-	except:
-		# Some other error (maybe parsing error)
-		return False
-
-	return False
-
-def _parseRSSURL(url):
-	"""
-	Parse RSS feed at url @url and return the available videos from that feed.
-	"""
-
-	r = requests.get(url)
-	if r.status_code != 200:
-		return False
-
-	ret = {
-		'title': None,
-		'uploader': None,
-		'ytids': []
-	}
-
-	# Parse RSS as XML
-	root = ET.fromstring(r.text)
-
-	title = root.find('./{http://www.w3.org/2005/Atom}title')
-	if title is not None:
-		ret['title'] = title.text
-
-	uploader = root.find('./{http://www.w3.org/2005/Atom}author/{http://www.w3.org/2005/Atom}name')
-	if uploader is not None:
-		ret['uploader'] = uploader.text
-
-	entries = root.findall('./{http://www.w3.org/2005/Atom}entry')
-	for entry in entries:
-		ytid = entry.find('./{http://www.youtube.com/xml/schemas/2015}videoId').text
-		ret['ytids'].append(ytid)
-
-	return ret
-
-
-
-
-
 
 
 def sync_videos(d, filt, ignore_old):
@@ -538,25 +438,14 @@ def sync_videos(d, filt, ignore_old):
 	those videos that have been sync'ed before.
 	"""
 
-	where = ""
-	if type(filt) is list and len(filt):
-		# Can provide both YTID's and channel/user names to filter by in the same list
-		# So search both ytid colum and dname (same as user name, channel name, etc)
-		where = "`ytid` in ({0}) or `dname` in ({0})".format(",".join( ["'%s'" % _ for _ in filt] ))
-
-	# If ignore old is desired, then add it to the where clause
-	if ignore_old:
-		if where: where += " AND "
-		where += "`utime` is null"
-
-
-	# Get all videos matching the specified criteria
-	res = d.v.select(['rowid','ytid','ctime','skip'], where)
+	# Get videos
+	res = d.get_v(filt, ignore_old)
 
 	# Convert rows to dictionaries
 	rows = [dict(_) for _ in res]
 	# Sort by YTID to be consistent
 	rows = sorted(rows, key=lambda x: x['ytid'])
+	print(rows)
 
 	summary = {
 		'done': [],
@@ -570,6 +459,9 @@ def sync_videos(d, filt, ignore_old):
 		# Don't show exception
 		return
 	finally:
+		print()
+		print()
+		print()
 		print("Total videos: %d" % len(rows))
 		print("Completed: %d" % len(summary['done']))
 		print("Payment required (%d):" % len(summary['paymentreq']))
@@ -619,6 +511,8 @@ def _sync_videos(d, ignore_old, summary, rows):
 		name = name.replace('/', '-')
 		name = name.replace('\\', '-')
 		name = name.replace('!', '')
+		name = name.replace('?', '')
+		name = name.replace('|', '')
 		# Collapse all multiple spaces into a single space (each replace will cut # of spaces
 		# by half, so assuming no more than 16 spaces
 		name = name.replace('  ', ' ')
@@ -626,6 +520,8 @@ def _sync_videos(d, ignore_old, summary, rows):
 		name = name.replace('  ', ' ')
 		name = name.replace('  ', ' ')
 		name = name.replace('  ', ' ')
+		# Get rid of trailing whitespace
+		name = name.strip()
 
 		# Format
 		atime = _now()
@@ -743,9 +639,9 @@ def _main():
 	p.add_argument('--title', help="Title of the video")
 
 	p.add_argument('--add', nargs='*', default=False, help="Add URL(s) to download")
-	p.add_argument('--list', nargs='+', default=False, help="List of lists")
-	p.add_argument('--listall', nargs='+', default=False, help="Same as --list but will list all the videos too")
-	p.add_argument('--showpath', nargs='+', default=False, help="Show file paths for the given channels or YTID's")
+	p.add_argument('--list', nargs='*', default=False, help="List of lists")
+	p.add_argument('--listall', nargs='*', default=False, help="Same as --list but will list all the videos too")
+	p.add_argument('--showpath', nargs='*', default=False, help="Show file paths for the given channels or YTID's")
 	p.add_argument('--json', action='store_true', default=False, help="Dump output as JSON")
 	p.add_argument('--xml', action='store_true', default=False, help="Dump output as XML")
 
@@ -790,13 +686,13 @@ def _main():
 
 
 	# List the lists that are known
-	if args.list or args.listall:
+	if args.list is not False or args.listall is not False:
 		where = ""
 		where_pl = ""
-		if type(args.list) is list:
+		if type(args.list) is list and len(args.list):
 			where = "`name` in (%s)" % ",".join( ["'%s'" % _ for _ in args.list] )
 			where_pl = "`ytid` in (%s)" % ",".join( ["'%s'" % _ for _ in args.list] )
-		if type(args.listall) is list:
+		if type(args.listall) is list and len(args.listall):
 			where = "`name` in (%s)" % ",".join( ["'%s'" % _ for _ in args.listall] )
 			where_pl = "`ytid` in (%s)" % ",".join( ["'%s'" % _ for _ in args.listall] )
 
@@ -813,11 +709,21 @@ def _main():
 
 			print("\t%s (%d)" % (row['name'], sub_cnt))
 
-			if args.listall:
-				for sub_row in sub_rows:
-					subsub_row = d.v.select_one(["title","duration"], "`ytid`=?", [sub_row['ytid']])
-					print("\t\t%s: %s (%s)" % (sub_row['ytid'], subsub_row['title'], sec_str(subsub_row['duration'])))
+			if type(args.listall) is list:
+				counts = 0
 
+				for sub_row in sub_rows:
+					subsub_row = d.v.select_one(["dname","name","title","duration"], "`ytid`=?", [sub_row['ytid']])
+
+					path = "%s/%s/%s-%s.mkv" % (os.getcwd(), subsub_row['dname'], subsub_row['name'], sub_row['ytid'])
+					exists = os.path.exists(path)
+					if exists:
+						counts += 1
+
+					print("\t\t%s: %s (%s)%s" % (sub_row['ytid'], subsub_row['title'], sec_str(subsub_row['duration']), exists and " EXISTS" or ""))
+
+
+				print("\tExists: %d of %d" % (counts, len(sub_rows)))
 
 
 
@@ -834,12 +740,26 @@ def _main():
 
 			print("\t%s (%d)" % (row['name'], sub_cnt))
 
-			if args.listall:
+			if type(args.listall) is list:
+				counts = 0
+
 				for sub_row in sub_rows:
-					subsub_row = d.v.select_one(["title","duration"], "`ytid`=?", [sub_row['ytid']])
-					print("\t\t%s: %s (%s)" % (sub_row['ytid'], subsub_row['title'], sec_str(subsub_row['duration'])))
+					subsub_row = d.v.select_one(["dname","name","title","duration"], "`ytid`=?", [sub_row['ytid']])
 
+					exists = False
+					if subsub_row:
+						path = "%s/%s/%s-%s.mkv" % (os.getcwd(), subsub_row['dname'], subsub_row['name'], sub_row['ytid'])
+						exists = os.path.exists(path)
+						if exists:
+							counts += 1
 
+					if not exists:
+						if subsub_row is None:
+							print("\t\t%s: ?" % (sub_row['ytid'],))
+						else:
+							print("\t\t%s: %s (%s)%s" % (sub_row['ytid'], subsub_row['title'], sec_str(subsub_row['duration']), exists and " EXISTS" or ""))
+
+				print("\tExists: %d of %d" % (counts, len(sub_rows)))
 
 
 
@@ -855,13 +775,22 @@ def _main():
 
 			print("\t%s (%d)" % (row['name'], sub_cnt))
 
-			if args.listall:
+			if type(args.listall) is list:
 				for sub_row in sub_rows:
-					subsub_row = d.v.select_one(["title","duration"], "`ytid`=?", [sub_row['ytid']])
+					subsub_row = d.v.select_one(["dname","name","title","duration"], "`ytid`=?", [sub_row['ytid']])
 					if subsub_row['title'] is None:
 						print("\t\t%s: ? (?)" % (sub_row['ytid'],))
 					else:
-						print("\t\t%s: %s (%s)" % (sub_row['ytid'], subsub_row['title'], sec_str(subsub_row['duration'])))
+						exists = False
+						if subsub_row:
+							path = "%s/%s/%s-%s.mkv" % (os.getcwd(), subsub_row['dname'], subsub_row['name'], sub_row['ytid'])
+							exists = os.path.exists(path)
+							if exists:
+								counts += 1
+
+						print("\t\t%s: %s (%s)%s" % (sub_row['ytid'], subsub_row['title'], sec_str(subsub_row['duration']), exists and " EXISTS" or ""))
+
+				print("\tExists: %d of %d" % (counts, len(sub_rows)))
 
 
 
@@ -879,10 +808,20 @@ def _main():
 
 			print("\t%s (%d)" % (row['ytid'], sub_cnt))
 
-			if args.listall:
+			if type(args.listall) is list:
 				for sub_row in sub_rows:
-					subsub_row = d.v.select_one(["title","duration"], "`ytid`=?", [sub_row['ytid']])
-					print("\t\t%s: %s (%s)" % (sub_row['ytid'], subsub_row['title'], sec_str(subsub_row['duration'])))
+					subsub_row = d.v.select_one(["dname","name","title","duration"], "`ytid`=?", [sub_row['ytid']])
+
+					exists = False
+					if subsub_row:
+						path = "%s/%s/%s-%s.mkv" % (os.getcwd(), subsub_row['dname'], subsub_row['name'], sub_row['ytid'])
+						exists = os.path.exists(path)
+						if exists:
+							counts += 1
+
+					print("\t\t%s: %s (%s)%s" % (sub_row['ytid'], subsub_row['title'], sec_str(subsub_row['duration']), exists and " EXISTS" or ""))
+
+				print("\tExists: %d of %d" % (counts, len(sub_rows)))
 
 
 	# Processing list of URLs
