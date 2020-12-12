@@ -742,7 +742,7 @@ def _main():
 	p.add_argument('--sync-list', nargs='*', default=False, help="Sync just the lists (not videos)")
 	p.add_argument('--sync-videos', nargs='*', default=False, help="Sync just the videos (not lists)")
 	p.add_argument('--ignore-old', action='store_true', default=False, help="Ignore old list items and old videos")
-	p.add_argument('--download', action='store_true', default=False, help="Download video")
+	p.add_argument('--download', nargs='*', default=False, help="Download video")
 	args = p.parse_args()
 
 	d = db(args.file)
