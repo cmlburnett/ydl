@@ -655,42 +655,55 @@ def _sync_videos(d, ignore_old, summary, rows):
 		summary['done'].append(ytid)
 
 def download_videos(d, filt, ignore_old):
+	# Get total number of videos in the database
+	res = d.v.select(['rowid'], "")
+	total = len(res.fetchall())
+
+	print("%d videos in database" % total)
+
+	# See how many are skipped
+	res = d.v.select(['rowid'], "`skip`=1")
+	total = len(res.fetchall())
+
+	if type(filt) is list and len(filt):
+		print("\tSkipped: %d (total skipped in DB, this flag is ignored if YTID's when channels are specified)" % total)
+	else:
+		print("\tSkipped: %d" % total)
+
+
+	# Filter
 	where = ""
 	if type(filt) is list and len(filt):
 		# Can provide both YTID's and channel/user names to filter by in the same list
 		# So search both ytid colum and dname (same as user name, channel name, etc)
-		where = "`ytid` in ({0}) or `dname` in ({0})".format(",".join( ["'%s'" % _ for _ in filt] ))
-
-	res = d.v.select(['rowid'], where)
-	total = len(res.fetchall())
-
-	print([res.fetchall()])
-
-	print("%d videos in database" % total)
-	sys.exit()
+		where = "(`ytid` in ({0}) or `dname` in ({0}))".format(",".join( ["'%s'" % _ for _ in filt] ))
+	else:
+		# Enable skip if not filtering
+		where = "`skip`!=1"
 
 	if ignore_old:
-		res = d.v.select(['rowid','ytid','title','name','dname'], "`utime` is null")
-		rows = res.fetchall()
-		print("Ignoring old videos, %d left" % len(rows))
-	else:
-		res = d.v.select(['rowid','ytid','title','name','dname'], "")
-		rows = res.fetchall()
+		print("Ignoring old videos")
+		if where: where += " AND "
+		where += "`utime` is null"
+
+	res = d.v.select(['rowid','ytid','title','name','dname'], where)
+	rows = res.fetchall()
+
+	if (type(filt) is list and len(filt)) or ignore_old:
+		print("\tFiltered down to %d" % len(rows))
+	# Pad out a line
+	print()
 
 	# Convert to dictionaries and index by ytid
 	rows = [dict(_) for _ in rows]
 	rows = {_['ytid']:_ for _ in rows}
 
-	# Sort by ytids
+	# Sort by ytids to consistently download in same order
 	ytids = list(rows.keys())
 	ytids = sorted(ytids)
 
 	for i,ytid in enumerate(ytids):
 		row = rows[ytid]
-
-		# DEBUG
-		if row['dname'] != 'NoraSvet':
-			continue
 
 		print("\t%d of %d: %s" % (i+1, len(rows), row['ytid']))
 
@@ -732,6 +745,7 @@ def _main():
 	p.add_argument('--add', nargs='*', default=False, help="Add URL(s) to download")
 	p.add_argument('--list', nargs='+', default=False, help="List of lists")
 	p.add_argument('--listall', nargs='+', default=False, help="Same as --list but will list all the videos too")
+	p.add_argument('--showpath', nargs='+', default=False, help="Show file paths for the given channels or YTID's")
 	p.add_argument('--json', action='store_true', default=False, help="Dump output as JSON")
 	p.add_argument('--xml', action='store_true', default=False, help="Dump output as XML")
 
@@ -748,8 +762,32 @@ def _main():
 	d = db(args.file)
 	d.open()
 
-	# Processing list of URLs
-	urls = []
+	# Show paths of videos
+	if type(args.showpath) is list:
+		where = "(`ytid` in ({0}) or `dname` in ({0}))".format(",".join( ["'%s'" % _ for _ in args.showpath] ))
+
+		res = d.v.select(['rowid','ytid','dname','name','title','duration'], where)
+		rows = [dict(_) for _ in res]
+		rows = sorted(rows, key=lambda _: _['ytid'])
+
+		for row in rows:
+			cwd = os.getcwd()
+			dname = os.path.join(cwd, row['dname'])
+
+			# Append YTID to the file name
+			fname = row['name'] + '-' + row['ytid']
+
+			path = dname + '/' + fname + '.mkv'
+
+			exists = os.path.exists(path)
+			if exists:
+				print("%s: %s (%s) EXISTS" % (row['ytid'],row['title'],sec_str(row['duration'])))
+			else:
+				print("%s: %s (%s)" % (row['ytid'],row['title'],sec_str(row['duration'])))
+
+			print("\t%s" % path)
+			print()
+
 
 	# List the lists that are known
 	if args.list or args.listall:
@@ -846,6 +884,9 @@ def _main():
 					subsub_row = d.v.select_one(["title","duration"], "`ytid`=?", [sub_row['ytid']])
 					print("\t\t%s: %s (%s)" % (sub_row['ytid'], subsub_row['title'], sec_str(subsub_row['duration'])))
 
+
+	# Processing list of URLs
+	urls = []
 
 	# Check all URLs
 	if type(args.add) is list:
@@ -1049,7 +1090,6 @@ def _main():
 		print("Update playlists")
 		sync_playlists(d, filt, ignore_old=args.ignore_old, rss_ok=(not args.no_rss))
 
-	print([args.sync, args.sync_videos])
 	if args.sync is not False or args.sync_videos is not False:
 		filt = None
 		if type(args.sync) is list:			filt = args.sync
