@@ -175,7 +175,7 @@ class db(SH):
 	def add_channel_unnamed(self, name):
 		return self.ch.insert(name=name, ctime=_now())
 
-def sync_channels_named(d, ignore_old, rss_ok):
+def sync_channels_named(d, filt, ignore_old, rss_ok):
 	"""
 	Sync "named" channels (I don't know how else to call them) that are /c/NAME
 	as opposed to "unnamed" channels that are at /channel/NAME
@@ -188,9 +188,9 @@ def sync_channels_named(d, ignore_old, rss_ok):
 	As RSS feeds don't contain the entire history of a list, it is only good for incremental changes.
 	"""
 
-	_sync_list(d, d.c, 'name', ignore_old, rss_ok, ydl.get_list_c)
+	_sync_list(d, d.c, filt, 'name', ignore_old, rss_ok, ydl.get_list_c)
 
-def sync_users(d, ignore_old, rss_ok):
+def sync_users(d, filt, ignore_old, rss_ok):
 	"""
 	Sync user videos
 
@@ -201,9 +201,9 @@ def sync_users(d, ignore_old, rss_ok):
 	As RSS feeds don't contain the entire history of a list, it is only good for incremental changes.
 	"""
 
-	_sync_list(d, d.u, 'name', ignore_old, rss_ok, ydl.get_list_user)
+	_sync_list(d, d.u, filt, 'name', ignore_old, rss_ok, ydl.get_list_user)
 
-def sync_channels_unnamed(d, ignore_old, rss_ok):
+def sync_channels_unnamed(d, filt, ignore_old, rss_ok):
 	"""
 	Sync "unnamed" channels (I don't know how else to call them) that are /channel/NAME
 	as opposed to "named" channels that are at /c/NAME
@@ -216,9 +216,9 @@ def sync_channels_unnamed(d, ignore_old, rss_ok):
 	As RSS feeds don't contain the entire history of a list, it is only good for incremental changes.
 	"""
 
-	_sync_list(d, d.ch, 'name', ignore_old, rss_ok, ydl.get_list_channel)
+	_sync_list(d, d.ch, filt, 'name', ignore_old, rss_ok, ydl.get_list_channel)
 
-def sync_playlists(d, ignore_old, rss_ok):
+def sync_playlists(d, filt, ignore_old, rss_ok):
 	"""
 	Sync all playlists.
 
@@ -231,13 +231,14 @@ def sync_playlists(d, ignore_old, rss_ok):
 	# Not applicable to playlists (no RSS)
 	rss_ok = False
 
-	_sync_list(d, d.pl, 'ytid', ignore_old, rss_ok, ydl.get_list_playlist)
+	_sync_list(d, d.pl, filt, 'ytid', ignore_old, rss_ok, ydl.get_list_playlist)
 
-def _sync_list(d, d_sub, col_name, ignore_old, rss_ok, ydl_func):
+def _sync_list(d, d_sub, filt, col_name, ignore_old, rss_ok, ydl_func):
 	"""
 	Sub helper function
 	@d -- main database object
 	@d_sub -- sub object that is table specific for the list being updated
+	@filt -- list of names to filter by
 	@col_name -- name of the column in @d_sub that is the name of the list (eg, ytid, name)
 	@ignore_old -- only look at new stuff
 	@rss_ok -- can check list current-ness by using RSS
@@ -248,8 +249,13 @@ def _sync_list(d, d_sub, col_name, ignore_old, rss_ok, ydl_func):
 
 	# Filter based on atime being null if @ignore_old is True
 	where = ""
+	if type(filt) is list and len(filt):
+		# FIXME: need to pass by value
+		where = "`%s` in (%s)" % (col_name, ",".join( ["'%s'" % _ for _ in filt] ))
+
 	if ignore_old:
-		where = "`atime` is null"
+		if len(where): where += " AND "
+		where += "`atime` is null"
 
 	res = d_sub.select(['rowid',col_name,'atime'], where)
 
@@ -526,16 +532,26 @@ def _parseRSSURL(url):
 
 
 
-def sync_videos(d, ignore_old):
+def sync_videos(d, filt, ignore_old):
 	"""
 	Sync all videos in the database @d and if @ignore_old is True then don't sync
 	those videos that have been sync'ed before.
 	"""
 
+	where = ""
+	if type(filt) is list and len(filt):
+		# Can provide both YTID's and channel/user names to filter by in the same list
+		# So search both ytid colum and dname (same as user name, channel name, etc)
+		where = "`ytid` in ({0}) or `dname` in ({0})".format(",".join( ["'%s'" % _ for _ in filt] ))
+
+	# If ignore old is desired, then add it to the where clause
 	if ignore_old:
-		res = d.v.select(['rowid','ytid','ctime','skip'], "utime is null")
-	else:
-		res = d.v.select(['rowid','ytid','ctime','skip'], "")
+		if where: where += " AND "
+		where += "`utime` is null"
+
+
+	# Get all videos matching the specified criteria
+	res = d.v.select(['rowid','ytid','ctime','skip'], where)
 
 	# Convert rows to dictionaries
 	rows = [dict(_) for _ in res]
@@ -603,6 +619,13 @@ def _sync_videos(d, ignore_old, summary, rows):
 		name = name.replace('/', '-')
 		name = name.replace('\\', '-')
 		name = name.replace('!', '')
+		# Collapse all multiple spaces into a single space (each replace will cut # of spaces
+		# by half, so assuming no more than 16 spaces
+		name = name.replace('  ', ' ')
+		name = name.replace('  ', ' ')
+		name = name.replace('  ', ' ')
+		name = name.replace('  ', ' ')
+		name = name.replace('  ', ' ')
 
 		# Format
 		atime = _now()
@@ -665,12 +688,15 @@ def download_videos(d, ignore_old):
 		cwd = os.getcwd()
 		dname = os.path.join(cwd, row['dname'])
 
+		# Append YTID to the file name
+		fname = row['name'] + '-' + row['ytid']
+
 		# Make subdir if it doesn't exist
 		if not os.path.exists(dname):
 			os.mkdir(dname)
 
 		try:
-			ydl.download(row['ytid'], row['name'], dname)
+			ydl.download(row['ytid'], fname, dname)
 		except KeyboardInterrupt:
 			break
 		except:
@@ -695,17 +721,17 @@ def _main():
 	p.add_argument('--title', help="Title of the video")
 
 	p.add_argument('--add', nargs='*', default=False, help="Add URL(s) to download")
-	p.add_argument('--list', nargs='?', const=True, help="List of lists")
-	p.add_argument('--listall', action='store_true', default=False, help="When calling --list, this will list all the videos too")
+	p.add_argument('--list', nargs='+', default=False, help="List of lists")
+	p.add_argument('--listall', nargs='+', default=False, help="Same as --list but will list all the videos too")
 	p.add_argument('--json', action='store_true', default=False, help="Dump output as JSON")
 	p.add_argument('--xml', action='store_true', default=False, help="Dump output as XML")
 
 	p.add_argument('--no-rss', action='store_true', default=False, help="Don't use RSS to check status of lists")
 	p.add_argument('--skip', nargs='*', help="Skip the specified videos (supply no ids to get a list of skipped)")
 	p.add_argument('--unskip', nargs='*', help="Un-skip the specified videos (supply no ids to get a list of not skipped)")
-	p.add_argument('--sync', action='store_true', default=False, help="Sync all metadata and playlists (does not download video data)")
-	p.add_argument('--sync-list', action='store_true', default=False, help="Sync just the lists (not videos)")
-	p.add_argument('--sync-videos', action='store_true', default=False, help="Sync just the videos (not lists)")
+	p.add_argument('--sync', nargs='*', default=False, help="Sync all metadata and playlists (does not download video data)")
+	p.add_argument('--sync-list', nargs='*', default=False, help="Sync just the lists (not videos)")
+	p.add_argument('--sync-videos', nargs='*', default=False, help="Sync just the videos (not lists)")
 	p.add_argument('--ignore-old', action='store_true', default=False, help="Ignore old list items and old videos")
 	p.add_argument('--download', action='store_true', default=False, help="Download video")
 	args = p.parse_args()
@@ -717,93 +743,99 @@ def _main():
 	urls = []
 
 	# List the lists that are known
-	if args.list:
-		if args.list is True:
-			res = d.u.select("*", "")
-			rows = [dict(_) for _ in res]
-			rows = sorted(rows, key=lambda _: _['name'])
+	if args.list or args.listall:
+		where = ""
+		where_pl = ""
+		if type(args.list) is list:
+			where = "`name` in (%s)" % ",".join( ["'%s'" % _ for _ in args.list] )
+			where_pl = "`ytid` in (%s)" % ",".join( ["'%s'" % _ for _ in args.list] )
+		if type(args.listall) is list:
+			where = "`name` in (%s)" % ",".join( ["'%s'" % _ for _ in args.listall] )
+			where_pl = "`ytid` in (%s)" % ",".join( ["'%s'" % _ for _ in args.listall] )
 
-			print("Users (%d):" % len(rows))
-			for row in rows:
-				sub_res = d.vids.select(["rowid","ytid"], "`name`=?", [row['name']], "`idx` asc")
-				sub_rows = [dict(_) for _ in sub_res]
-				sub_cnt = len(sub_rows)
+		res = d.u.select("*", where)
+		rows = [dict(_) for _ in res]
+		rows = sorted(rows, key=lambda _: _['name'])
 
-				print("\t%s (%d)" % (row['name'], sub_cnt))
 
-				if args.listall:
-					for sub_row in sub_rows:
-						subsub_row = d.v.select_one(["title","duration"], "`ytid`=?", [sub_row['ytid']])
+		print("Users (%d):" % len(rows))
+		for row in rows:
+			sub_res = d.vids.select(["rowid","ytid"], "`name`=?", [row['name']], "`idx` asc")
+			sub_rows = [dict(_) for _ in sub_res]
+			sub_cnt = len(sub_rows)
+
+			print("\t%s (%d)" % (row['name'], sub_cnt))
+
+			if args.listall:
+				for sub_row in sub_rows:
+					subsub_row = d.v.select_one(["title","duration"], "`ytid`=?", [sub_row['ytid']])
+					print("\t\t%s: %s (%s)" % (sub_row['ytid'], subsub_row['title'], sec_str(subsub_row['duration'])))
+
+
+
+
+
+		res = d.c.select("*", where)
+		rows = [dict(_) for _ in res]
+		rows = sorted(rows, key=lambda _: _['name'])
+
+		print("Named channels (%d):" % len(rows))
+		for row in rows:
+			sub_res = d.vids.select(["rowid","ytid"], "`name`=?", [row['name']], "`idx` asc")
+			sub_rows = [dict(_) for _ in sub_res]
+			sub_cnt = len(sub_rows)
+
+			print("\t%s (%d)" % (row['name'], sub_cnt))
+
+			if args.listall:
+				for sub_row in sub_rows:
+					subsub_row = d.v.select_one(["title","duration"], "`ytid`=?", [sub_row['ytid']])
+					print("\t\t%s: %s (%s)" % (sub_row['ytid'], subsub_row['title'], sec_str(subsub_row['duration'])))
+
+
+
+
+
+		res = d.ch.select("*", where)
+		rows = [dict(_) for _ in res]
+		rows = sorted(rows, key=lambda _: _['name'])
+
+		print("Unnamed channels (%d):" % len(rows))
+		for row in rows:
+			sub_res = d.vids.select(["rowid","ytid"], "`name`=?", [row['name']], "`idx` asc")
+			sub_rows = [dict(_) for _ in sub_res]
+			sub_cnt = len(sub_rows)
+
+			print("\t%s (%d)" % (row['name'], sub_cnt))
+
+			if args.listall:
+				for sub_row in sub_rows:
+					subsub_row = d.v.select_one(["title","duration"], "`ytid`=?", [sub_row['ytid']])
+					if subsub_row['title'] is None:
+						print("\t\t%s: ? (?)" % (sub_row['ytid'],))
+					else:
 						print("\t\t%s: %s (%s)" % (sub_row['ytid'], subsub_row['title'], sec_str(subsub_row['duration'])))
 
 
 
 
 
-			res = d.c.select("*", "")
-			rows = [dict(_) for _ in res]
-			rows = sorted(rows, key=lambda _: _['name'])
+		res = d.pl.select("*", where_pl)
+		rows = [dict(_) for _ in res]
+		rows = sorted(rows, key=lambda _: _['ytid'])
 
-			print("Named channels (%d):" % len(rows))
-			for row in rows:
-				sub_res = d.vids.select(["rowid","ytid"], "`name`=?", [row['name']], "`idx` asc")
-				sub_rows = [dict(_) for _ in sub_res]
-				sub_cnt = len(sub_rows)
+		print("Playlists (%d):" % len(rows))
+		for row in rows:
+			sub_res = d.vids.select(["rowid","ytid"], "`name`=?", [row['ytid']], "`idx` asc")
+			sub_rows = [dict(_) for _ in sub_res]
+			sub_cnt = len(sub_rows)
 
-				print("\t%s (%d)" % (row['name'], sub_cnt))
+			print("\t%s (%d)" % (row['ytid'], sub_cnt))
 
-				if args.listall:
-					for sub_row in sub_rows:
-						subsub_row = d.v.select_one(["title","duration"], "`ytid`=?", [sub_row['ytid']])
-						print("\t\t%s: %s (%s)" % (sub_row['ytid'], subsub_row['title'], sec_str(subsub_row['duration'])))
-
-
-
-
-
-			res = d.ch.select("*", "")
-			rows = [dict(_) for _ in res]
-			rows = sorted(rows, key=lambda _: _['name'])
-
-			print("Unnamed channels (%d):" % len(rows))
-			for row in rows:
-				sub_res = d.vids.select(["rowid","ytid"], "`name`=?", [row['name']], "`idx` asc")
-				sub_rows = [dict(_) for _ in sub_res]
-				sub_cnt = len(sub_rows)
-
-				print("\t%s (%d)" % (row['name'], sub_cnt))
-
-				if args.listall:
-					for sub_row in sub_rows:
-						subsub_row = d.v.select_one(["title","duration"], "`ytid`=?", [sub_row['ytid']])
-						if subsub_row['title'] is None:
-							print("\t\t%s: ? (?)" % (sub_row['ytid'],))
-						else:
-							print("\t\t%s: %s (%s)" % (sub_row['ytid'], subsub_row['title'], sec_str(subsub_row['duration'])))
-
-
-
-
-
-			res = d.pl.select("*", "")
-			rows = [dict(_) for _ in res]
-			rows = sorted(rows, key=lambda _: _['ytid'])
-
-			print("Playlists (%d):" % len(rows))
-			for row in rows:
-				sub_res = d.vids.select(["rowid","ytid"], "`name`=?", [row['ytid']], "`idx` asc")
-				sub_rows = [dict(_) for _ in sub_res]
-				sub_cnt = len(sub_rows)
-
-				print("\t%s (%d)" % (row['ytid'], sub_cnt))
-
-				if args.listall:
-					for sub_row in sub_rows:
-						subsub_row = d.v.select_one(["title","duration"], "`ytid`=?", [sub_row['ytid']])
-						print("\t\t%s: %s (%s)" % (sub_row['ytid'], subsub_row['title'], sec_str(subsub_row['duration'])))
-
-		else:
-			print(args.list)
+			if args.listall:
+				for sub_row in sub_rows:
+					subsub_row = d.v.select_one(["title","duration"], "`ytid`=?", [sub_row['ytid']])
+					print("\t\t%s: %s (%s)" % (sub_row['ytid'], subsub_row['title'], sec_str(subsub_row['duration'])))
 
 
 	# Check all URLs
@@ -991,22 +1023,31 @@ def _main():
 				d.v.update({"rowid": row['rowid']}, {"skip": False})
 			d.commit()
 
-	if args.sync or args.sync_list:
+	if args.sync is not False or args.sync_list is not False:
+		filt = None
+		if type(args.sync) is list:			filt = args.sync
+		if type(args.sync_list) is list:	filt = args.sync_list
+
 		print("Update users")
-		sync_users(d, ignore_old=args.ignore_old, rss_ok=(not args.no_rss))
+		sync_users(d, filt, ignore_old=args.ignore_old, rss_ok=(not args.no_rss))
 
 		print("Update unnamed channels")
-		sync_channels_unnamed(d, ignore_old=args.ignore_old, rss_ok=(not args.no_rss))
+		sync_channels_unnamed(d, filt, ignore_old=args.ignore_old, rss_ok=(not args.no_rss))
 
 		print("Update named channels")
-		sync_channels_named(d, ignore_old=args.ignore_old, rss_ok=(not args.no_rss))
+		sync_channels_named(d, filt, ignore_old=args.ignore_old, rss_ok=(not args.no_rss))
 
 		print("Update playlists")
-		sync_playlists(d, ignore_old=args.ignore_old, rss_ok=(not args.no_rss))
+		sync_playlists(d, filt, ignore_old=args.ignore_old, rss_ok=(not args.no_rss))
 
-	if args.sync or args.sync_videos:
+	print([args.sync, args.sync_videos])
+	if args.sync is not False or args.sync_videos is not False:
+		filt = None
+		if type(args.sync) is list:			filt = args.sync
+		if type(args.sync_videos) is list:	filt = args.sync_videos
+
 		print("Sync all videos")
-		sync_videos(d, ignore_old=args.ignore_old)
+		sync_videos(d, filt, ignore_old=args.ignore_old)
 
 	if args.download:
 		print("Download vides")
