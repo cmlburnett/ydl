@@ -654,11 +654,20 @@ def _sync_videos(d, ignore_old, summary, rows):
 		# Got it
 		summary['done'].append(ytid)
 
-def download_videos(d, ignore_old):
-	res = d.v.select(['rowid'], "")
+def download_videos(d, filt, ignore_old):
+	where = ""
+	if type(filt) is list and len(filt):
+		# Can provide both YTID's and channel/user names to filter by in the same list
+		# So search both ytid colum and dname (same as user name, channel name, etc)
+		where = "`ytid` in ({0}) or `dname` in ({0})".format(",".join( ["'%s'" % _ for _ in filt] ))
+
+	res = d.v.select(['rowid'], where)
 	total = len(res.fetchall())
 
+	print([res.fetchall()])
+
 	print("%d videos in database" % total)
+	sys.exit()
 
 	if ignore_old:
 		res = d.v.select(['rowid','ytid','title','name','dname'], "`utime` is null")
@@ -1049,9 +1058,13 @@ def _main():
 		print("Sync all videos")
 		sync_videos(d, filt, ignore_old=args.ignore_old)
 
-	if args.download:
+	if args.download is not False:
+		filt = []
+		if type(args.download) is list and len(args.download):
+			filt = args.download
+
 		print("Download vides")
-		download_videos(d, ignore_old=args.ignore_old)
+		download_videos(d, filt, ignore_old=args.ignore_old)
 
 
 if __name__ == '__main__':
