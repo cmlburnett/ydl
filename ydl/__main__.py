@@ -726,6 +726,43 @@ def _main():
 	d = db(args.file)
 	d.open()
 
+	_main_manual()
+
+	if type(args.showpath) is list:
+		_main_showpath(args, d)
+
+	if type(args.list) is list or type(args.listall) is list:
+		_main_list(args, d)
+
+	if type(args.add) is list:
+		_main_add(args, d)
+
+	if args.skip is not None:
+		_main_skip(args, d)
+
+	if args.unskip is not None:
+		_main_unskip(args, d)
+
+	if args.name:
+		_main_name(args, d)
+
+	if type(args.alias) is list:
+		_main_alias(args, d)
+
+	if args.sync is not False or args.sync_list is not False:
+		_main_sync_list(args, d)
+
+	if args.sync is not False or args.sync_videos is not False:
+		_main_sync_videos(args, d)
+
+	if args.download is not False:
+		_main_download(args, d)
+
+def _main_manual():
+	"""
+	Manually do stuff
+	"""
+
 	# Manually coerce the v.name from v.title
 	if False:
 		res = d.v.select(['rowid','title'], '')
@@ -764,163 +801,139 @@ def _main():
 		sys.exit()
 
 
-	# Show paths of videos
-	if type(args.showpath) is list:
-		where = "(`ytid` in ({0}) or `dname` in ({0}))".format(",".join( ["'%s'" % _ for _ in args.showpath] ))
+def _main_showpath(args, d):
+	"""
+	Show paths of all the videos
+	"""
 
-		res = d.v.select(['rowid','ytid','dname','name','title','duration'], where)
-		rows = [dict(_) for _ in res]
-		rows = sorted(rows, key=lambda _: _['ytid'])
+	if not len(args.showpath):
+		raise KeyError("Must provide a channel to list, use --list to get a list of them")
 
-		for row in rows:
-			path = d.get_v_fname(row['ytid'])
+	where = "(`ytid` in ({0}) or `dname` in ({0}))".format(",".join( ["'%s'" % _ for _ in args.showpath] ))
 
-			exists = os.path.exists(path)
-			if exists:
-				print("%s: %s (%s) EXISTS" % (row['ytid'],row['title'],sec_str(row['duration'])))
-			else:
-				print("%s: %s (%s)" % (row['ytid'],row['title'],sec_str(row['duration'])))
+	res = d.v.select(['rowid','ytid','dname','name','title','duration'], where)
+	rows = [dict(_) for _ in res]
+	rows = sorted(rows, key=lambda _: _['ytid'])
 
-			print("\t%s" % path)
-			print()
+	for row in rows:
+		path = d.get_v_fname(row['ytid'])
 
+		exists = os.path.exists(path)
+		if exists:
+			print("%s: %s (%s) EXISTS" % (row['ytid'],row['title'],sec_str(row['duration'])))
+		else:
+			print("%s: %s (%s)" % (row['ytid'],row['title'],sec_str(row['duration'])))
 
-	# List the lists that are known
-	if args.list is not False or args.listall is not False:
-		where = ""
-		where_pl = ""
-		where_ch = ""
-		if type(args.list) is list and len(args.list):
-			where = "`name` in (%s)" % ",".join( ["'%s'" % _ for _ in args.list] )
-			where_pl = "`ytid` in (%s)" % ",".join( ["'%s'" % _ for _ in args.list] )
-			where_ch = "`name` in ({0}) or `alias` in ({0})".format(",".join( ["'%s'" % _ for _ in args.list] ))
-		if type(args.listall) is list and len(args.listall):
-			where = "`name` in (%s)" % ",".join( ["'%s'" % _ for _ in args.listall] )
-			where_pl = "`ytid` in (%s)" % ",".join( ["'%s'" % _ for _ in args.listall] )
-			where_ch = "`name` in ({0}) or `alias` in ({0})".format(",".join( ["'%s'" % _ for _ in args.listall] ))
-
-		res = d.u.select("*", where)
-		rows = [dict(_) for _ in res]
-		rows = sorted(rows, key=lambda _: _['name'])
+		print("\t%s" % path)
+		print()
 
 
-		print("Users (%d):" % len(rows))
-		for row in rows:
-			sub_res = d.vids.select(["rowid","ytid"], "`name`=?", [row['name']], "`idx` asc")
-			sub_rows = [dict(_) for _ in sub_res]
-			sub_cnt = len(sub_rows)
+def _main_list(args, d):
+	"""
+	"""
+	where = ""
+	where_pl = ""
+	where_ch = ""
+	if type(args.list) is list and len(args.list):
+		where = "`name` in (%s)" % ",".join( ["'%s'" % _ for _ in args.list] )
+		where_pl = "`ytid` in (%s)" % ",".join( ["'%s'" % _ for _ in args.list] )
+		where_ch = "`name` in ({0}) or `alias` in ({0})".format(",".join( ["'%s'" % _ for _ in args.list] ))
+	if type(args.listall) is list and len(args.listall):
+		where = "`name` in (%s)" % ",".join( ["'%s'" % _ for _ in args.listall] )
+		where_pl = "`ytid` in (%s)" % ",".join( ["'%s'" % _ for _ in args.listall] )
+		where_ch = "`name` in ({0}) or `alias` in ({0})".format(",".join( ["'%s'" % _ for _ in args.listall] ))
 
-			print("\t%s (%d)" % (row['name'], sub_cnt))
+	res = d.u.select("*", where)
+	rows = [dict(_) for _ in res]
+	rows = sorted(rows, key=lambda _: _['name'])
 
-			if type(args.listall) is list:
-				counts = 0
 
-				for sub_row in sub_rows:
-					subsub_row = d.v.select_one(["dname","name","title","duration"], "`ytid`=?", [sub_row['ytid']])
+	print("Users (%d):" % len(rows))
+	for row in rows:
+		sub_res = d.vids.select(["rowid","ytid"], "`name`=?", [row['name']], "`idx` asc")
+		sub_rows = [dict(_) for _ in sub_res]
+		sub_cnt = len(sub_rows)
 
+		print("\t%s (%d)" % (row['name'], sub_cnt))
+
+		if type(args.listall) is list:
+			counts = 0
+
+			for sub_row in sub_rows:
+				subsub_row = d.v.select_one(["dname","name","title","duration"], "`ytid`=?", [sub_row['ytid']])
+
+				path = "%s/%s/%s-%s.mkv" % (os.getcwd(), subsub_row['dname'], subsub_row['name'], sub_row['ytid'])
+				exists = os.path.exists(path)
+				if exists:
+					counts += 1
+
+				print("\t\t%s: %s (%s)%s" % (sub_row['ytid'], subsub_row['title'], sec_str(subsub_row['duration']), exists and " EXISTS" or ""))
+
+
+			print("\tExists: %d of %d" % (counts, len(sub_rows)))
+
+
+
+
+	res = d.c.select("*", where)
+	rows = [dict(_) for _ in res]
+	rows = sorted(rows, key=lambda _: _['name'])
+
+	print("Named channels (%d):" % len(rows))
+	for row in rows:
+		sub_res = d.vids.select(["rowid","ytid"], "`name`=?", [row['name']], "`idx` asc")
+		sub_rows = [dict(_) for _ in sub_res]
+		sub_cnt = len(sub_rows)
+
+		print("\t%s (%d)" % (row['name'], sub_cnt))
+
+		if type(args.listall) is list:
+			counts = 0
+
+			for sub_row in sub_rows:
+				subsub_row = d.v.select_one(["dname","name","title","duration"], "`ytid`=?", [sub_row['ytid']])
+
+				exists = False
+				if subsub_row:
 					path = "%s/%s/%s-%s.mkv" % (os.getcwd(), subsub_row['dname'], subsub_row['name'], sub_row['ytid'])
 					exists = os.path.exists(path)
 					if exists:
 						counts += 1
 
+				if subsub_row is None:
+					print("\t\t%s: ?" % (sub_row['ytid'],))
+				else:
 					print("\t\t%s: %s (%s)%s" % (sub_row['ytid'], subsub_row['title'], sec_str(subsub_row['duration']), exists and " EXISTS" or ""))
 
-
-				print("\tExists: %d of %d" % (counts, len(sub_rows)))
-
+			print("\tExists: %d of %d" % (counts, len(sub_rows)))
 
 
 
-		res = d.c.select("*", where)
-		rows = [dict(_) for _ in res]
-		rows = sorted(rows, key=lambda _: _['name'])
 
-		print("Named channels (%d):" % len(rows))
-		for row in rows:
-			sub_res = d.vids.select(["rowid","ytid"], "`name`=?", [row['name']], "`idx` asc")
-			sub_rows = [dict(_) for _ in sub_res]
-			sub_cnt = len(sub_rows)
+	res = d.ch.select(['rowid','name','alias'], where_ch)
+	rows = [dict(_) for _ in res]
+	rows = sorted(rows, key=lambda _: _['alias'] or _['name'])
 
+	print("Unnamed channels (%d):" % len(rows))
+	for row in rows:
+		name = row['alias'] or row['name']
+
+		sub_res = d.vids.select(["rowid","ytid"], "`name`=?", [name], "`idx` asc")
+		sub_rows = [dict(_) for _ in sub_res]
+		sub_cnt = len(sub_rows)
+
+		if row['alias']:
+			print("\t%s -> %s (%d)" % (row['name'], row['alias'], sub_cnt))
+		else:
 			print("\t%s (%d)" % (row['name'], sub_cnt))
 
-			if type(args.listall) is list:
-				counts = 0
-
-				for sub_row in sub_rows:
-					subsub_row = d.v.select_one(["dname","name","title","duration"], "`ytid`=?", [sub_row['ytid']])
-
-					exists = False
-					if subsub_row:
-						path = "%s/%s/%s-%s.mkv" % (os.getcwd(), subsub_row['dname'], subsub_row['name'], sub_row['ytid'])
-						exists = os.path.exists(path)
-						if exists:
-							counts += 1
-
-					if subsub_row is None:
-						print("\t\t%s: ?" % (sub_row['ytid'],))
-					else:
-						print("\t\t%s: %s (%s)%s" % (sub_row['ytid'], subsub_row['title'], sec_str(subsub_row['duration']), exists and " EXISTS" or ""))
-
-				print("\tExists: %d of %d" % (counts, len(sub_rows)))
-
-
-
-
-		res = d.ch.select(['rowid','name','alias'], where_ch)
-		rows = [dict(_) for _ in res]
-		rows = sorted(rows, key=lambda _: _['alias'] or _['name'])
-
-		print("Unnamed channels (%d):" % len(rows))
-		for row in rows:
-			name = row['alias'] or row['name']
-
-			sub_res = d.vids.select(["rowid","ytid"], "`name`=?", [name], "`idx` asc")
-			sub_rows = [dict(_) for _ in sub_res]
-			sub_cnt = len(sub_rows)
-
-			if row['alias']:
-				print("\t%s -> %s (%d)" % (row['name'], row['alias'], sub_cnt))
-			else:
-				print("\t%s (%d)" % (row['name'], sub_cnt))
-
-			if type(args.listall) is list:
-				counts = 0
-				for sub_row in sub_rows:
-					subsub_row = d.v.select_one(["dname","name","title","duration"], "`ytid`=?", [sub_row['ytid']])
-					if subsub_row['title'] is None:
-						print("\t\t%s: ? (?)" % (sub_row['ytid'],))
-					else:
-						exists = False
-						if subsub_row:
-							path = "%s/%s/%s-%s.mkv" % (os.getcwd(), subsub_row['dname'], subsub_row['name'], sub_row['ytid'])
-							exists = os.path.exists(path)
-							if exists:
-								counts += 1
-
-						print("\t\t%s: %s (%s)%s" % (sub_row['ytid'], subsub_row['title'], sec_str(subsub_row['duration']), exists and " EXISTS" or ""))
-
-				print("\tExists: %d of %d" % (counts, len(sub_rows)))
-
-
-
-
-
-		res = d.pl.select("*", where_pl)
-		rows = [dict(_) for _ in res]
-		rows = sorted(rows, key=lambda _: _['ytid'])
-
-		print("Playlists (%d):" % len(rows))
-		for row in rows:
-			sub_res = d.vids.select(["rowid","ytid"], "`name`=?", [row['ytid']], "`idx` asc")
-			sub_rows = [dict(_) for _ in sub_res]
-			sub_cnt = len(sub_rows)
-
-			print("\t%s (%d)" % (row['ytid'], sub_cnt))
-
-			if type(args.listall) is list:
-				for sub_row in sub_rows:
-					subsub_row = d.v.select_one(["dname","name","title","duration"], "`ytid`=?", [sub_row['ytid']])
-
+		if type(args.listall) is list:
+			counts = 0
+			for sub_row in sub_rows:
+				subsub_row = d.v.select_one(["dname","name","title","duration"], "`ytid`=?", [sub_row['ytid']])
+				if subsub_row['title'] is None:
+					print("\t\t%s: ? (?)" % (sub_row['ytid'],))
+				else:
 					exists = False
 					if subsub_row:
 						path = "%s/%s/%s-%s.mkv" % (os.getcwd(), subsub_row['dname'], subsub_row['name'], sub_row['ytid'])
@@ -930,74 +943,103 @@ def _main():
 
 					print("\t\t%s: %s (%s)%s" % (sub_row['ytid'], subsub_row['title'], sec_str(subsub_row['duration']), exists and " EXISTS" or ""))
 
-				print("\tExists: %d of %d" % (counts, len(sub_rows)))
+			print("\tExists: %d of %d" % (counts, len(sub_rows)))
 
 
+
+
+
+	res = d.pl.select("*", where_pl)
+	rows = [dict(_) for _ in res]
+	rows = sorted(rows, key=lambda _: _['ytid'])
+
+	print("Playlists (%d):" % len(rows))
+	for row in rows:
+		sub_res = d.vids.select(["rowid","ytid"], "`name`=?", [row['ytid']], "`idx` asc")
+		sub_rows = [dict(_) for _ in sub_res]
+		sub_cnt = len(sub_rows)
+
+		print("\t%s (%d)" % (row['ytid'], sub_cnt))
+
+		if type(args.listall) is list:
+			for sub_row in sub_rows:
+				subsub_row = d.v.select_one(["dname","name","title","duration"], "`ytid`=?", [sub_row['ytid']])
+
+				exists = False
+				if subsub_row:
+					path = "%s/%s/%s-%s.mkv" % (os.getcwd(), subsub_row['dname'], subsub_row['name'], sub_row['ytid'])
+					exists = os.path.exists(path)
+					if exists:
+						counts += 1
+
+				print("\t\t%s: %s (%s)%s" % (sub_row['ytid'], subsub_row['title'], sec_str(subsub_row['duration']), exists and " EXISTS" or ""))
+
+			print("\tExists: %d of %d" % (counts, len(sub_rows)))
+
+def _main_add(args, d):
 	# Processing list of URLs
 	urls = []
 
-	# Check all URLs
-	if type(args.add) is list:
-		if args.stdin:
-			vals = [_.strip() for _ in sys.stdin.readlines()]
-		else:
-			vals = args.add
+	if args.stdin:
+		vals = [_.strip() for _ in sys.stdin.readlines()]
+	else:
+		vals = args.add
 
-		for url in vals:
-			u = urllib.parse.urlparse(url)
-			print(u)
+	for url in vals:
+		u = urllib.parse.urlparse(url)
+		print(u)
 
-			if u.scheme != 'https':
+		if u.scheme != 'https':
+			print(url)
+			print("\t" + "URL only recognized if https")
+			sys.exit(-1)
+
+		if u.netloc not in ('www.youtube.com', 'youtube.com', 'youtu.be'):
+			print(url)
+			print("\t" + "URL not at a recognized host")
+			sys.exit(-1)
+
+		if u.path == '/watch':
+			# Expect u.query to be 'v=XXXXXXXXXXX'
+			q = urllib.parse.parse_qs(u.query)
+			if 'v' not in q:
 				print(url)
-				print("\t" + "URL only recognized if https")
+				print("\t" + "Watch URL expected to have a v=XXXXXX query string")
 				sys.exit(-1)
+			urls.append( ('v', q['v'][0]) )
 
-			if u.netloc not in ('www.youtube.com', 'youtube.com', 'youtu.be'):
+		if u.path == '/playlist':
+			# Expect u.query to be 'list=XXXXXXXXXXXXXXXXXXX'
+			q = urllib.parse.parse_qs(u.query)
+			if 'list' not in q:
 				print(url)
-				print("\t" + "URL not at a recognized host")
+				print("\t" + "Playlist URL expected to have a list=XXXXXX query string")
 				sys.exit(-1)
+			urls.append( ('p', q['list'][0]) )
 
-			if u.path == '/watch':
-				# Expect u.query to be 'v=XXXXXXXXXXX'
-				q = urllib.parse.parse_qs(u.query)
-				if 'v' not in q:
-					print(url)
-					print("\t" + "Watch URL expected to have a v=XXXXXX query string")
-					sys.exit(-1)
-				urls.append( ('v', q['v'][0]) )
+		if u.path.startswith('/user/'):
+			q = u.path.split('/')
+			if len(q) != 3:
+				print(url)
+				print("\t" + "User URL expected to have a name after /user/")
+				sys.exit(-1)
+			urls.append( ('u', q[2]) )
 
-			if u.path == '/playlist':
-				# Expect u.query to be 'list=XXXXXXXXXXXXXXXXXXX'
-				q = urllib.parse.parse_qs(u.query)
-				if 'list' not in q:
-					print(url)
-					print("\t" + "Playlist URL expected to have a list=XXXXXX query string")
-					sys.exit(-1)
-				urls.append( ('p', q['list'][0]) )
+		if u.path.startswith('/c/'):
+			q = u.path.split('/')
+			if len(q) != 3:
+				print(url)
+				print("\t" + "Channel URL expected to have a channel name after /c/")
+				sys.exit(-1)
+			urls.append( ('c', q[2]) )
 
-			if u.path.startswith('/user/'):
-				q = u.path.split('/')
-				if len(q) != 3:
-					print(url)
-					print("\t" + "User URL expected to have a name after /user/")
-					sys.exit(-1)
-				urls.append( ('u', q[2]) )
-
-			if u.path.startswith('/c/'):
-				q = u.path.split('/')
-				if len(q) != 3:
-					print(url)
-					print("\t" + "Channel URL expected to have a channel name after /c/")
-					sys.exit(-1)
-				urls.append( ('c', q[2]) )
-
-			if u.path.startswith('/channel/'):
-				q = u.path.split('/')
-				if len(q) != 3:
-					print(url)
-					print("\t" + "Channel URL expected to have a channel name after /channel/")
-					sys.exit(-1)
-				urls.append( ('ch', q[2]) )
+		if u.path.startswith('/channel/'):
+			q = u.path.split('/')
+			if len(q) != 3:
+				print(url)
+				print("\t" + "Channel URL expected to have a channel name after /channel/")
+				sys.exit(-1)
+			urls.append( ('ch', q[2]) )
 
 
 	d.begin()
@@ -1056,245 +1098,249 @@ def _main():
 	d.commit()
 
 
+def _main_skip(args, d):
+	"""
+	List or add videos to the skip list.
+	"""
 
-	if args.skip is not None:
-		if not len(args.skip):
-			res = d.v.select("ytid", "`skip`=?", [True])
-			ytids = [_['ytid'] for _ in res]
-			ytids = sorted(ytids)
+	if not len(args.skip):
+		res = d.v.select("ytid", "`skip`=?", [True])
+		ytids = [_['ytid'] for _ in res]
+		ytids = sorted(ytids)
 
-			if args.json:
-				print(json.dumps(ytids))
-			elif args.xml:
-				raise NotImplementedError("XML not implemented yet")
-			else:
-				# FIXME: abide by --json and --xml
-				print("Videos marked skip (%d):" % len(ytids))
-				for ytid in ytids:
-					print("\t%s" % ytid)
+		if args.json:
+			print(json.dumps(ytids))
+		elif args.xml:
+			raise NotImplementedError("XML not implemented yet")
 		else:
-			# This could signify STDIN contains json or xml to intrepret as ytids???
-			if args.json:
-				raise NotImplementedError("--json not meaningful when adding skipped videos")
-			if args.xml:
-				raise NotImplementedError("--xml not meaningful when adding skipped videos")
-
-			ytids = list(set(args.skip))
-			print("Marking videos to skip (%d):" % len(ytids))
-
-
-			d.begin()
+			# FIXME: abide by --json and --xml
+			print("Videos marked skip (%d):" % len(ytids))
 			for ytid in ytids:
 				print("\t%s" % ytid)
-				row = d.v.select_one("rowid", "`ytid`=?", [ytid])
-				d.v.update({"rowid": row['rowid']}, {"skip": True})
-			d.commit()
+	else:
+		# This could signify STDIN contains json or xml to intrepret as ytids???
+		if args.json:
+			raise NotImplementedError("--json not meaningful when adding skipped videos")
+		if args.xml:
+			raise NotImplementedError("--xml not meaningful when adding skipped videos")
 
-	if args.unskip is not None:
-		if not len(args.unskip):
-			res = d.v.select("ytid", "`skip`=?", [False])
-			ytids = [_['ytid'] for _ in res]
-			ytids = sorted(ytids)
+		ytids = list(set(args.skip))
+		print("Marking videos to skip (%d):" % len(ytids))
 
-			if args.json:
-				print(json.dumps(ytids))
-			elif args.xml:
-				raise NotImplementedError("XML not implemented yet")
-			else:
-				print("Videos NOT marked skip (%d):" % len(ytids))
-				for ytid in ytids:
-					print("\t%s" % ytid)
+
+		d.begin()
+		for ytid in ytids:
+			print("\t%s" % ytid)
+			row = d.v.select_one("rowid", "`ytid`=?", [ytid])
+			d.v.update({"rowid": row['rowid']}, {"skip": True})
+		d.commit()
+
+def _main_unskip(args, d):
+	"""
+	Remove videos from the skip list
+	"""
+
+	if not len(args.unskip):
+		res = d.v.select("ytid", "`skip`=?", [False])
+		ytids = [_['ytid'] for _ in res]
+		ytids = sorted(ytids)
+
+		if args.json:
+			print(json.dumps(ytids))
+		elif args.xml:
+			raise NotImplementedError("XML not implemented yet")
 		else:
-			# This could signify STDIN contains json or xml to intrepret as ytids???
-			if args.json:
-				raise NotImplementedError("--json not meaningful when removing skipped videos")
-			if args.xml:
-				raise NotImplementedError("--xml not meaningful when removed skipped videos")
-
-			ytids = list(set(args.unskip))
-			print("Marking videos to not skip (%d):" % len(ytids))
-
-			d.begin()
+			print("Videos NOT marked skip (%d):" % len(ytids))
 			for ytid in ytids:
-				print("\t%s" % ytids)
-				row = d.v.select_one("rowid", "`ytid`=?", [ytid])
-				d.v.update({"rowid": row['rowid']}, {"skip": False})
-			d.commit()
+				print("\t%s" % ytid)
+	else:
+		# This could signify STDIN contains json or xml to intrepret as ytids???
+		if args.json:
+			raise NotImplementedError("--json not meaningful when removing skipped videos")
+		if args.xml:
+			raise NotImplementedError("--xml not meaningful when removed skipped videos")
 
-	if args.name:
-		ytid = args.name[0]
+		ytids = list(set(args.unskip))
+		print("Marking videos to not skip (%d):" % len(ytids))
 
-		if len(args.name) == 1:
-			row = d.v.select_one(['rowid','dname','name','title'], '`ytid`=?', [ytid])
-			if not row:
-				print("No video with YTID '%s' found" % ytid)
-				sys.exit()
+		d.begin()
+		for ytid in ytids:
+			print("\t%s" % ytids)
+			row = d.v.select_one("rowid", "`ytid`=?", [ytid])
+			d.v.update({"rowid": row['rowid']}, {"skip": False})
+		d.commit()
 
-			print("YTID: %s" % ytid)
-			print("Title: %s" % row['title'])
-			print("Directory: %s" % row['dname'])
-			print("Computed name: %s" % row['name'])
+def _main_name(args, d):
+	ytid = args.name[0]
 
-			row = d.vnames.select_one('name', '`ytid`=?', [ytid])
-			if row:
-				print("Preferred name: %s" % row['name'])
+	if len(args.name) == 1:
+		row = d.v.select_one(['rowid','dname','name','title'], '`ytid`=?', [ytid])
+		if not row:
+			print("No video with YTID '%s' found" % ytid)
+			sys.exit()
 
-		elif len(args.name) == 2:
-			pref_name = db.title_to_name(args.name[1])
-			if pref_name != args.name[1]:
-				raise KeyError("Name '%s' is not valid" % args.name[1])
+		print("YTID: %s" % ytid)
+		print("Title: %s" % row['title'])
+		print("Directory: %s" % row['dname'])
+		print("Computed name: %s" % row['name'])
 
-			dname = d.get_v_dname(ytid)
+		row = d.vnames.select_one('name', '`ytid`=?', [ytid])
+		if row:
+			print("Preferred name: %s" % row['name'])
 
-			# Get file name without suffix
-			fname = d.get_v_fname(ytid, suffix=None)
+	elif len(args.name) == 2:
+		pref_name = db.title_to_name(args.name[1])
+		if pref_name != args.name[1]:
+			raise KeyError("Name '%s' is not valid" % args.name[1])
 
-			# Find anything with the matching YTID and rename it
-			fs = glob.glob("%s/*%s*" % (dname, ytid))
-			for f in fs:
-				# Split up by the YTID: everything before is trashed, and file suffix is preserved
-				parts = f.rsplit(ytid, 1)
+		dname = d.get_v_dname(ytid)
 
-				# Rebuild file name with preferred name, YTID, and the original suffix
-				dest = "%s/%s-%s%s" % (dname,pref_name, ytid, parts[1])
+		# Get file name without suffix
+		fname = d.get_v_fname(ytid, suffix=None)
 
-				os.rename(f, dest)
+		# Find anything with the matching YTID and rename it
+		fs = glob.glob("%s/*%s*" % (dname, ytid))
+		for f in fs:
+			# Split up by the YTID: everything before is trashed, and file suffix is preserved
+			parts = f.rsplit(ytid, 1)
 
-			d.begin()
-			row = d.vnames.select_one('rowid', '`ytid`=?', [ytid])
-			if row:
-				d.vnames.update({'rowid': row['rowid']}, {'name': pref_name})
-			else:
-				d.vnames.insert(ytid=ytid, name=pref_name)
-			d.commit()
+			# Rebuild file name with preferred name, YTID, and the original suffix
+			dest = "%s/%s-%s%s" % (dname,pref_name, ytid, parts[1])
 
+			os.rename(f, dest)
+
+		d.begin()
+		row = d.vnames.select_one('rowid', '`ytid`=?', [ytid])
+		if row:
+			d.vnames.update({'rowid': row['rowid']}, {'name': pref_name})
 		else:
-			print("Too many arguments")
+			d.vnames.insert(ytid=ytid, name=pref_name)
+		d.commit()
 
-		sys.exit()
+	else:
+		print("Too many arguments")
 
-	if type(args.alias) is list:
-		if len(args.alias) == 0:
-			res = d.ch.select(['rowid','name','alias'])
-			rows = [dict(_) for _ in res]
-			print("Existing channels:")
-			for row in rows:
-				if row['alias'] is None:
-					print("\t%s" % row['name'])
-				else:
-					print("\t%s -> %s" % (row['name'], row['alias']))
-		elif len(args.alias) == 1:
-			row = d.ch.select_one(['name','alias'], "`name`=? or `alias`=?", [args.alias[0], args.alias[0]])
-			print("Channel: %s" % row['name'])
-			print("Alias: %s" % row['alias'])
 
-		elif len(args.alias) == 2:
-			res = d.ch.select('*', '`name`=?', [args.alias[1]])
-			rows = [dict(_) for _ in res]
-			if len(rows):
+def _main_alias(args, d):
+	if len(args.alias) == 0:
+		res = d.ch.select(['rowid','name','alias'])
+		rows = [dict(_) for _ in res]
+		print("Existing channels:")
+		for row in rows:
+			if row['alias'] is None:
+				print("\t%s" % row['name'])
+			else:
+				print("\t%s -> %s" % (row['name'], row['alias']))
+	elif len(args.alias) == 1:
+		row = d.ch.select_one(['name','alias'], "`name`=? or `alias`=?", [args.alias[0], args.alias[0]])
+		print("Channel: %s" % row['name'])
+		print("Alias: %s" % row['alias'])
+
+	elif len(args.alias) == 2:
+		res = d.ch.select('*', '`name`=?', [args.alias[1]])
+		rows = [dict(_) for _ in res]
+		if len(rows):
+			raise ValueError("Alias name already used for an unnamed channel: %s" % rows[0]['name'])
+
+		res = d.ch.select('*', '`alias`=?', [args.alias[1]])
+		rows = [dict(_) for _ in res]
+		if len(rows):
+			if rows[0]['name'] == args.alias[0]:
+				# Renaming to same alias
+				sys.exit()
+			else:
 				raise ValueError("Alias name already used for an unnamed channel: %s" % rows[0]['name'])
 
-			res = d.ch.select('*', '`alias`=?', [args.alias[1]])
-			rows = [dict(_) for _ in res]
-			if len(rows):
-				if rows[0]['name'] == args.alias[0]:
-					# Renaming to same alias
-					sys.exit()
-				else:
-					raise ValueError("Alias name already used for an unnamed channel: %s" % rows[0]['name'])
+		res = d.c.select('*', '`name`=?', [args.alias[1]])
+		rows = [dict(_) for _ in res]
+		if len(rows):
+			raise ValueError("Alias name already used for an named channel: %s" % rows[0]['name'])
 
-			res = d.c.select('*', '`name`=?', [args.alias[1]])
-			rows = [dict(_) for _ in res]
-			if len(rows):
-				raise ValueError("Alias name already used for an named channel: %s" % rows[0]['name'])
-
-			res = d.u.select('*', '`name`=?', [args.alias[1]])
-			rows = [dict(_) for _ in res]
-			if len(rows):
-				raise ValueError("Alias name already used for a user: %s" % rows[0]['name'])
+		res = d.u.select('*', '`name`=?', [args.alias[1]])
+		rows = [dict(_) for _ in res]
+		if len(rows):
+			raise ValueError("Alias name already used for a user: %s" % rows[0]['name'])
 
 
 
-			pref = db.alias_coerce(args.alias[1])
-			if pref != args.alias[1]:
-				raise KeyError("Alias '%s' is not valid" % args.name[1])
+		pref = db.alias_coerce(args.alias[1])
+		if pref != args.alias[1]:
+			raise KeyError("Alias '%s' is not valid" % args.name[1])
 
-			row = d.ch.select_one(['rowid','alias'], '`name`=?', [args.alias[0]])
-			if row is None:
-				raise ValueError("No channel by %s" % args.alias[0])
+		row = d.ch.select_one(['rowid','alias'], '`name`=?', [args.alias[0]])
+		if row is None:
+			raise ValueError("No channel by %s" % args.alias[0])
 
-			# Used for updating vids table
-			old_name = args.alias[0]
+		# Used for updating vids table
+		old_name = args.alias[0]
 
 
-			# Old and new directory names
-			old = os.getcwd() + '/' + args.alias[0]
-			new = os.getcwd() + '/' + pref
+		# Old and new directory names
+		old = os.getcwd() + '/' + args.alias[0]
+		new = os.getcwd() + '/' + pref
 
-			# If long ch.name exists on the filesystem then move it to the alias
-			if os.path.exists(old):
-				os.rename(old, new)
+		# If long ch.name exists on the filesystem then move it to the alias
+		if os.path.exists(old):
+			os.rename(old, new)
 
-			# If prior ch.alias exists then move it to the new alias
-			else:
-				# Nope, not there either
-				if row['alias'] is None:
-					raise ValueError("No channel directory exists at '%s'" % old)
-
-				# Move from old to new alias
-				else:
-					old_name = row['alias']
-
-					old = os.getcwd() + '/' + row['alias']
-					new = os.getcwd() + '/' + pref
-
-					if os.path.exists(old):
-						os.rename(old, new)
-
-			# Add/update alias to channel
-			d.begin()
-			d.ch.update({'rowid': row['rowid']}, {'alias': pref})
-			d.v.update({'dname': args.alias[0]}, {'dname': pref})
-			d.vids.update({'name': old_name}, {'name': pref})
-			d.commit()
-
+		# If prior ch.alias exists then move it to the new alias
 		else:
-			print("Too many variables")
+			# Nope, not there either
+			if row['alias'] is None:
+				raise ValueError("No channel directory exists at '%s'" % old)
+
+			# Move from old to new alias
+			else:
+				old_name = row['alias']
+
+				old = os.getcwd() + '/' + row['alias']
+				new = os.getcwd() + '/' + pref
+
+				if os.path.exists(old):
+					os.rename(old, new)
+
+		# Add/update alias to channel
+		d.begin()
+		d.ch.update({'rowid': row['rowid']}, {'alias': pref})
+		d.v.update({'dname': args.alias[0]}, {'dname': pref})
+		d.vids.update({'name': old_name}, {'name': pref})
+		d.commit()
+
+	else:
+		print("Too many variables")
 
 
-		sys.exit()
+def _main_sync_list(args, d):
+	filt = None
+	if type(args.sync) is list:			filt = args.sync
+	if type(args.sync_list) is list:	filt = args.sync_list
 
-	if args.sync is not False or args.sync_list is not False:
-		filt = None
-		if type(args.sync) is list:			filt = args.sync
-		if type(args.sync_list) is list:	filt = args.sync_list
+	print("Update users")
+	sync_users(d, filt, ignore_old=args.ignore_old, rss_ok=(not args.no_rss))
+	print("Update unnamed channels")
+	sync_channels_unnamed(d, filt, ignore_old=args.ignore_old, rss_ok=(not args.no_rss))
 
-		print("Update users")
-		sync_users(d, filt, ignore_old=args.ignore_old, rss_ok=(not args.no_rss))
-		print("Update unnamed channels")
-		sync_channels_unnamed(d, filt, ignore_old=args.ignore_old, rss_ok=(not args.no_rss))
+	print("Update named channels")
+	sync_channels_named(d, filt, ignore_old=args.ignore_old, rss_ok=(not args.no_rss))
 
-		print("Update named channels")
-		sync_channels_named(d, filt, ignore_old=args.ignore_old, rss_ok=(not args.no_rss))
+	print("Update playlists")
+	sync_playlists(d, filt, ignore_old=args.ignore_old, rss_ok=(not args.no_rss))
 
-		print("Update playlists")
-		sync_playlists(d, filt, ignore_old=args.ignore_old, rss_ok=(not args.no_rss))
+def _main_sync_video(args, d):
+	filt = None
+	if type(args.sync) is list:			filt = args.sync
+	if type(args.sync_videos) is list:	filt = args.sync_videos
 
-	if args.sync is not False or args.sync_videos is not False:
-		filt = None
-		if type(args.sync) is list:			filt = args.sync
-		if type(args.sync_videos) is list:	filt = args.sync_videos
+	print("Sync all videos")
+	sync_videos(d, filt, ignore_old=args.ignore_old)
 
-		print("Sync all videos")
-		sync_videos(d, filt, ignore_old=args.ignore_old)
+def _main_download(args, d):
+	filt = []
+	if type(args.download) is list and len(args.download):
+		filt = args.download
 
-	if args.download is not False:
-		filt = []
-		if type(args.download) is list and len(args.download):
-			filt = args.download
-
-		print("Download vides")
-		download_videos(d, filt, ignore_old=args.ignore_old)
+	print("Download vides")
+	download_videos(d, filt, ignore_old=args.ignore_old)
 
 
 if __name__ == '__main__':
