@@ -149,6 +149,8 @@ class db(SH):
 
 
 	def get_v(self, filt, ignore_old):
+		where = ""
+
 		if type(filt) is list and len(filt):
 			# Can provide both YTID's and channel/user names to filter by in the same list
 			# So search both ytid colum and dname (same as user name, channel name, etc)
@@ -159,7 +161,6 @@ class db(SH):
 			if where: where += " AND "
 			where += "`utime` is null"
 
-		print(['where', where])
 		res = self.v.select(['rowid','ytid','name','dname','duration','title','skip','ctime','atime','utime'], where)
 		return res
 
@@ -530,7 +531,6 @@ def sync_videos(d, filt, ignore_old):
 	rows = [dict(_) for _ in res]
 	# Sort by YTID to be consistent
 	rows = sorted(rows, key=lambda x: x['ytid'])
-	print(rows)
 
 	summary = {
 		'done': [],
@@ -730,7 +730,7 @@ def _main():
 	d = db(args.file)
 	d.open()
 
-	_main_manual()
+	_main_manual(args, d)
 
 	if type(args.showpath) is list:
 		_main_showpath(args, d)
@@ -762,7 +762,7 @@ def _main():
 	if args.download is not False:
 		_main_download(args, d)
 
-def _main_manual():
+def _main_manual(args, d):
 	"""
 	Manually do stuff
 	"""
@@ -782,7 +782,7 @@ def _main_manual():
 
 	# Manually coerce file names to v.name, or vnames.name if preent
 	if False:
-		res = d.v.select(['rowid','ytid'], "`dname`='AlaskaPrepper'")
+		res = d.v.select(['rowid','ytid'], "`dname`='foo'")
 		rows = [dict(_) for _ in res]
 		for row in rows:
 			ytid = row['ytid']
@@ -798,10 +798,11 @@ def _main_manual():
 				parts = f.rsplit(ytid, 1)
 
 				# Rebuild file name with preferred name, YTID, and the original suffix
-				dest = "%s-%s%s" % (name, ytid, parts[1])
+				dest = "%s%s" % (name, parts[1])
 
 				if f != dest:
 					os.rename(f, dest)
+
 		sys.exit()
 
 
@@ -1207,6 +1208,11 @@ def _main_unskip(args, d):
 		d.commit()
 
 def _main_name(args, d):
+	"""
+	List all the preferred names if --name.
+	List information about a single video if --name YTID is provided.
+	Set preferred name if --name YTID NAME is provided
+	"""
 
 	if len(args.name) == 0:
 		res = d.vnames.select(['ytid','name'])
@@ -1235,6 +1241,8 @@ def _main_name(args, d):
 		row = d.vnames.select_one('name', '`ytid`=?', [ytid])
 		if row:
 			print("Preferred name: %s" % row['name'])
+		else:
+			print("-- NO PREFERRED NAME SET --")
 
 	elif len(args.name) == 2:
 		ytid = args.name[0]
@@ -1376,7 +1384,7 @@ def _main_sync_list(args, d):
 	print("Update playlists")
 	sync_playlists(d, filt, ignore_old=args.ignore_old, rss_ok=(not args.no_rss))
 
-def _main_sync_video(args, d):
+def _main_sync_videos(args, d):
 	filt = None
 	if type(args.sync) is list:			filt = args.sync
 	if type(args.sync_videos) is list:	filt = args.sync_videos
