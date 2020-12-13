@@ -709,7 +709,7 @@ def _main():
 	p.add_argument('--title', help="Title of the video")
 
 	p.add_argument('--add', nargs='*', default=False, help="Add URL(s) to download")
-	p.add_argument('--name', nargs='+', default=False, help="Supply a YTID and file name to manually specify it")
+	p.add_argument('--name', nargs='*', default=False, help="Supply a YTID and file name to manually specify it")
 	p.add_argument('--alias', nargs='*', default=False, help="Add an alias for unnamed channels")
 	p.add_argument('--list', nargs='*', default=False, help="List of lists")
 	p.add_argument('--listall', nargs='*', default=False, help="Same as --list but will list all the videos too")
@@ -747,7 +747,7 @@ def _main():
 	if args.unskip is not None:
 		_main_unskip(args, d)
 
-	if args.name:
+	if type(args.name) is list:
 		_main_name(args, d)
 
 	if type(args.alias) is list:
@@ -1128,8 +1128,6 @@ def _main_add(args, d):
 				d.add_channel_unnamed(u[1])
 				print("\tAdded")
 
-
-
 		else:
 			raise ValueError("Unrecognize URL type %s" % (u,))
 
@@ -1209,9 +1207,21 @@ def _main_unskip(args, d):
 		d.commit()
 
 def _main_name(args, d):
-	ytid = args.name[0]
 
-	if len(args.name) == 1:
+	if len(args.name) == 0:
+		res = d.vnames.select(['ytid','name'])
+		rows = [dict(_) for _ in res]
+		rows = sorted(rows, key=lambda x: x['ytid'])
+
+		print("Preferred names (%d):" % len(rows))
+		for row in rows:
+			sub_row = d.v.select_one('dname', '`ytid`=?', [row['ytid']])
+
+			print("\t%s -> %s / %s" % (row['ytid'], sub_row['dname'], row['name']))
+
+	elif len(args.name) == 1:
+		ytid = args.name[0]
+
 		row = d.v.select_one(['rowid','dname','name','title'], '`ytid`=?', [ytid])
 		if not row:
 			print("No video with YTID '%s' found" % ytid)
@@ -1227,6 +1237,8 @@ def _main_name(args, d):
 			print("Preferred name: %s" % row['name'])
 
 	elif len(args.name) == 2:
+		ytid = args.name[0]
+
 		pref_name = db.title_to_name(args.name[1])
 		if pref_name != args.name[1]:
 			raise KeyError("Name '%s' is not valid" % args.name[1])
