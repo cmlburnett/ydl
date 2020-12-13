@@ -470,7 +470,6 @@ def __sync_list(args, d, d_sub, rows, f_get_list, summary):
 					print("\t\tAll are old, no updates")
 			else:
 				# Update or add video to list in vids table
-				print(['cur', cur])
 				for v in cur['info']:
 					# Update old index
 					if v['ytid'] in old:
@@ -488,10 +487,8 @@ def __sync_list(args, d, d_sub, rows, f_get_list, summary):
 					d.vids.delete({'rowid': '?'}, [rowid])
 
 				# Update or add video to the global videos list
-				print(['cur[info]', cur['info']])
 				for v in cur['info']:
 					vrow = d.v.select_one("rowid", "ytid=?", [v['ytid']])
-					print(vrow)
 					if vrow:
 						d.v.update({'rowid': vrow['rowid']}, {'atime': None})
 					else:
@@ -576,7 +573,7 @@ def _sync_videos(d, ignore_old, summary, rows):
 		if skip:
 			print("\t\tSkipping")
 			# This marks it as at least looked at, otherwise repeated --sync --ignore-old will keep checking
-			d.v.update({"rowid": rowid}, {"utime": _now()})
+			d.v.update({"rowid": rowid}, {"atime": _now()})
 			continue
 
 		# Get video information
@@ -594,8 +591,7 @@ def _sync_videos(d, ignore_old, summary, rows):
 			continue
 
 		# Squash non-ASCII characters (I don't like emoji in file names)
-		name = ret['title'].encode('ascii', errors='ignore').decode('ascii')
-		# Get rid of characters that are bad for file names
+		name = db.title_to_name(ret['title'])
 
 		# Format
 		atime = _now()
@@ -613,7 +609,6 @@ def _sync_videos(d, ignore_old, summary, rows):
 			'ptime': datetime.datetime.strptime(ret['upload_date'], "%Y%m%d"),
 			'ctime': ctime,
 			'atime': atime,
-			'utime': atime,
 		}
 
 		# Do actual update
@@ -787,7 +782,7 @@ def _main_manual(args, d):
 
 	# Manually coerce file names to v.name, or vnames.name if preent
 	if False:
-		res = d.v.select(['rowid','ytid'], "`dname`='foo'")
+		res = d.v.select(['rowid','ytid'], "`dname`='AdventureswJakeNicole'")
 		rows = [dict(_) for _ in res]
 		for row in rows:
 			ytid = row['ytid']
