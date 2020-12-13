@@ -805,6 +805,35 @@ def _main_manual(args, d):
 
 		sys.exit()
 
+	# Fix utime's based on the existence of each completed video (utime=null if absent)
+	if False:
+		d.begin()
+		res = d.v.select(['rowid','ytid','atime','utime'])
+		rows = [dict(_) for _ in res]
+		for i,row in enumerate(rows):
+			print("%d of %d: %s" % (i, len(rows), row['ytid']))
+
+			fname = d.get_v_fname(row['ytid'])
+			if os.path.exists(fname):
+				# No utime, so needs to be set
+				if row['utime'] is None:
+					if row['atime'] is None:
+						# Not ideal, but needs to be something
+						d.v.update({'rowid': row['rowid']}, {'utime': _now()})
+					else:
+						# No utime so assume atime
+						d.v.update({'rowid': row['rowid']}, {'utime': row['atime']})
+				else:
+					# utime set and that's fine
+					pass
+			else:
+				# utime should be null
+				d.v.update({'rowid': row['rowid']}, {'utime': None})
+
+		d.commit()
+		sys.exit()
+
+
 
 def _main_showpath(args, d):
 	"""
