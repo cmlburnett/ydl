@@ -863,24 +863,28 @@ def _main_list_user(args, d):
 
 		print("\t%s (%d)" % (row['name'], sub_cnt))
 
-		if type(args.listall) is list:
-			counts = 0
+		# Not --listall, so don't do videos
+		if type(args.listall) is not list:
+			continue
 
-			for sub_row in sub_rows:
-				subsub_row = d.v.select_one(["dname","name","title","duration"], "`ytid`=?", [sub_row['ytid']])
+		# Count number of videos that exist
+		counts = 0
 
-				path = "%s/%s/%s-%s.mkv" % (os.getcwd(), subsub_row['dname'], subsub_row['name'], sub_row['ytid'])
-				exists = os.path.exists(path)
-				if exists:
-					counts += 1
+		for sub_row in sub_rows:
+			subsub_row = d.v.select_one(["dname","name","title","duration"], "`ytid`=?", [sub_row['ytid']])
 
-				if subsub_row['duration']:
-					print("\t\t%s: %s (%s)%s" % (sub_row['ytid'], subsub_row['title'], sec_str(subsub_row['duration']), exists and " EXISTS" or ""))
-				else:
-					print("\t\t%s: %s" % (sub_row['ytid'], subsub_row['title']))
+			path = d.get_v_fname(sub_row['ytid'])
+			exists = os.path.exists(path)
+			if exists:
+				counts += 1
+
+			if subsub_row['duration']:
+				print("\t\t%s: %s (%s)%s" % (sub_row['ytid'], subsub_row['title'], sec_str(subsub_row['duration']), exists and " EXISTS" or ""))
+			else:
+				print("\t\t%s: %s" % (sub_row['ytid'], subsub_row['title']))
 
 
-			print("\tExists: %d of %d" % (counts, len(sub_rows)))
+		print("\tExists: %d of %d" % (counts, len(sub_rows)))
 
 
 def _main_list_c(args, d):
@@ -914,7 +918,7 @@ def _main_list_c(args, d):
 
 				exists = False
 				if subsub_row:
-					path = "%s/%s/%s-%s.mkv" % (os.getcwd(), subsub_row['dname'], subsub_row['name'], sub_row['ytid'])
+					path = d.get_v_fname(sub_row['ytid'])
 					exists = os.path.exists(path)
 					if exists:
 						counts += 1
@@ -963,7 +967,7 @@ def _main_list_ch(args, d):
 				else:
 					exists = False
 					if subsub_row:
-						path = "%s/%s/%s-%s.mkv" % (os.getcwd(), subsub_row['dname'], subsub_row['name'], sub_row['ytid'])
+						path = d.get_v_fname(sub_row['ytid'])
 						exists = os.path.exists(path)
 						if exists:
 							counts += 1
@@ -1001,7 +1005,7 @@ def _main_list_pl(args, d):
 
 				exists = False
 				if subsub_row:
-					path = "%s/%s/%s-%s.mkv" % (os.getcwd(), subsub_row['dname'], subsub_row['name'], sub_row['ytid'])
+					path = d.get_v_fname(sub_row['ytid'])
 					exists = os.path.exists(path)
 					if exists:
 						counts += 1
