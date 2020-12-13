@@ -241,7 +241,7 @@ class db(SH):
 
 		return a
 
-def sync_channels_named(d, filt, ignore_old, rss_ok):
+def sync_channels_named(args, d, filt, ignore_old, rss_ok):
 	"""
 	Sync "named" channels (I don't know how else to call them) that are /c/NAME
 	as opposed to "unnamed" channels that are at /channel/NAME
@@ -254,9 +254,9 @@ def sync_channels_named(d, filt, ignore_old, rss_ok):
 	As RSS feeds don't contain the entire history of a list, it is only good for incremental changes.
 	"""
 
-	_sync_list(d, d.c, filt, 'name', ignore_old, rss_ok, ydl.get_list_c)
+	_sync_list(args, d, d.c, filt, 'name', ignore_old, rss_ok, ydl.get_list_c)
 
-def sync_users(d, filt, ignore_old, rss_ok):
+def sync_users(args, d, filt, ignore_old, rss_ok):
 	"""
 	Sync user videos
 
@@ -267,9 +267,9 @@ def sync_users(d, filt, ignore_old, rss_ok):
 	As RSS feeds don't contain the entire history of a list, it is only good for incremental changes.
 	"""
 
-	_sync_list(d, d.u, filt, 'name', ignore_old, rss_ok, ydl.get_list_user)
+	_sync_list(args, d, d.u, filt, 'name', ignore_old, rss_ok, ydl.get_list_user)
 
-def sync_channels_unnamed(d, filt, ignore_old, rss_ok):
+def sync_channels_unnamed(args, d, filt, ignore_old, rss_ok):
 	"""
 	Sync "unnamed" channels (I don't know how else to call them) that are /channel/NAME
 	as opposed to "named" channels that are at /c/NAME
@@ -282,9 +282,9 @@ def sync_channels_unnamed(d, filt, ignore_old, rss_ok):
 	As RSS feeds don't contain the entire history of a list, it is only good for incremental changes.
 	"""
 
-	_sync_list(d, d.ch, filt, 'name', ignore_old, rss_ok, ydl.get_list_channel)
+	_sync_list(args, d, d.ch, filt, 'name', ignore_old, rss_ok, ydl.get_list_channel)
 
-def sync_playlists(d, filt, ignore_old, rss_ok):
+def sync_playlists(args, d, filt, ignore_old, rss_ok):
 	"""
 	Sync all playlists.
 
@@ -297,9 +297,9 @@ def sync_playlists(d, filt, ignore_old, rss_ok):
 	# Not applicable to playlists (no RSS)
 	rss_ok = False
 
-	_sync_list(d, d.pl, filt, 'ytid', ignore_old, rss_ok, ydl.get_list_playlist)
+	_sync_list(args, d, d.pl, filt, 'ytid', ignore_old, rss_ok, ydl.get_list_playlist)
 
-def _sync_list(d, d_sub, filt, col_name, ignore_old, rss_ok, ydl_func):
+def _sync_list(args, d, d_sub, filt, col_name, ignore_old, rss_ok, ydl_func):
 	"""
 	Sub helper function
 	@d -- main database object
@@ -348,7 +348,7 @@ def _sync_list(d, d_sub, filt, col_name, ignore_old, rss_ok, ydl_func):
 	}
 
 	# Sync the lists
-	__sync_list(d, d_sub, rows, ydl_func, summary)
+	__sync_list(args, d, d_sub, rows, ydl_func, summary)
 
 	print("\tDone: %d" % len(summary['done']))
 	print("\tError: %d" % len(summary['error']))
@@ -363,7 +363,7 @@ def _sync_list(d, d_sub, filt, col_name, ignore_old, rss_ok, ydl_func):
 		d_sub.update({'rowid': rowid}, {'atime': _now(), 'title': summary['info'][ytid]['title'], 'uploader': summary['info'][ytid]['uploader']})
 	d.commit()
 
-def __sync_list(d, d_sub, rows, f_get_list, summary):
+def __sync_list(args, d, d_sub, rows, f_get_list, summary):
 	"""
 	Base function that does all the list syncing.
 
@@ -429,10 +429,11 @@ def __sync_list(d, d_sub, rows, f_get_list, summary):
 							print("\t\tRSS shows new videos, obtain full list")
 							rss_ok = False
 							break
+
 		# If rss_ok is still True at this point then no need to check pull list
 		# If rss_ok is False, then it was False before checking RSS or was set False for error reasons
 		#  or (in particular) there are new videos to check
-		if rss_ok:
+		if rss_ok and not args.force:
 			continue
 		else:
 			print("\t\tChecking full list")
@@ -460,7 +461,7 @@ def __sync_list(d, d_sub, rows, f_get_list, summary):
 				weird_diff = []
 
 			# At least one is new
-			if all_old:
+			if all_old and not args.force:
 				if weird_diff:
 					print("\t\tFound videos in RSS but not in video list, probably upcoming videos (%d)" % len(weird_diff))
 					for _ in weird_diff:
@@ -469,6 +470,7 @@ def __sync_list(d, d_sub, rows, f_get_list, summary):
 					print("\t\tAll are old, no updates")
 			else:
 				# Update or add video to list in vids table
+				print(['cur', cur])
 				for v in cur['info']:
 					# Update old index
 					if v['ytid'] in old:
@@ -486,8 +488,10 @@ def __sync_list(d, d_sub, rows, f_get_list, summary):
 					d.vids.delete({'rowid': '?'}, [rowid])
 
 				# Update or add video to the global videos list
+				print(['cur[info]', cur['info']])
 				for v in cur['info']:
 					vrow = d.v.select_one("rowid", "ytid=?", [v['ytid']])
+					print(vrow)
 					if vrow:
 						d.v.update({'rowid': vrow['rowid']}, {'atime': None})
 					else:
@@ -717,6 +721,7 @@ def _main():
 	p.add_argument('--json', action='store_true', default=False, help="Dump output as JSON")
 	p.add_argument('--xml', action='store_true', default=False, help="Dump output as XML")
 
+	p.add_argument('--force', action='store_true', default=False, help="Force the action, whatever it may pertain to")
 	p.add_argument('--no-rss', action='store_true', default=False, help="Don't use RSS to check status of lists")
 	p.add_argument('--skip', nargs='*', help="Skip the specified videos (supply no ids to get a list of skipped)")
 	p.add_argument('--unskip', nargs='*', help="Un-skip the specified videos (supply no ids to get a list of not skipped)")
@@ -1374,15 +1379,16 @@ def _main_sync_list(args, d):
 	if type(args.sync_list) is list:	filt = args.sync_list
 
 	print("Update users")
-	sync_users(d, filt, ignore_old=args.ignore_old, rss_ok=(not args.no_rss))
+	sync_users(args, d, filt, ignore_old=args.ignore_old, rss_ok=(not args.no_rss))
+
 	print("Update unnamed channels")
-	sync_channels_unnamed(d, filt, ignore_old=args.ignore_old, rss_ok=(not args.no_rss))
+	sync_channels_unnamed(args, d, filt, ignore_old=args.ignore_old, rss_ok=(not args.no_rss))
 
 	print("Update named channels")
-	sync_channels_named(d, filt, ignore_old=args.ignore_old, rss_ok=(not args.no_rss))
+	sync_channels_named(args, d, filt, ignore_old=args.ignore_old, rss_ok=(not args.no_rss))
 
 	print("Update playlists")
-	sync_playlists(d, filt, ignore_old=args.ignore_old, rss_ok=(not args.no_rss))
+	sync_playlists(args, d, filt, ignore_old=args.ignore_old, rss_ok=(not args.no_rss))
 
 def _main_sync_videos(args, d):
 	filt = None
