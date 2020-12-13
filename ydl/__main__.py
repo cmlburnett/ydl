@@ -2,6 +2,7 @@
 # System
 import argparse
 import datetime
+import glob
 import json
 import logging
 import os
@@ -50,6 +51,12 @@ class db(SH):
 			# Put long strings at the end
 			DBCol('thumbnails', 'json')
 		),
+		# Manually set file names on some as standard ascii translation
+		# may make completely gibberish names
+		DBTable('vnames',
+			DBCol('ytid', 'text'),
+			DBCol('name', 'text') # Preferred file name for the given YTID
+		),
 		DBTable('chapters',
 			DBCol('ytid', 'text'),
 			DBCol('dat', 'json'),
@@ -77,6 +84,7 @@ class db(SH):
 		# Unnamed channels
 		DBTable('ch',
 			DBCol('name', 'text'),
+			DBCol('alias', 'text'),
 			DBCol('title', 'text'),
 			DBCol('uploader', 'text'),
 			DBCol('ctime', 'datetime'),
@@ -154,6 +162,79 @@ class db(SH):
 		print(['where', where])
 		res = self.v.select(['rowid','ytid','name','dname','duration','title','skip','ctime','atime','utime'], where)
 		return res
+
+	def get_v_dname(self, ytid, absolute=True):
+		row = self.v.select_one(['dname','name'], '`ytid`=?', [ytid])
+		if row is None:
+			raise ValueError("Video with YTID '%s' not found" % ytid)
+
+		if absolute:
+			return "%s/%s" % (os.getcwd(), row['dname'])
+		else:
+			return row['dname']
+
+	def get_v_fname(self, ytid, suffix='mkv'):
+		# Get preferred name, if one is set
+		row = self.vnames.select_one('name', '`ytid`=?', [ytid])
+		if row:
+			fname = row['name']
+		else:
+			fname = None
+
+		row = self.v.select_one(['dname','name'], '`ytid`=?', [ytid])
+		if row is None:
+			raise ValueError("Video with YTID '%s' not found" % ytid)
+
+		dname = row['dname']
+		if fname is None:
+			fname = row['name']
+
+		if suffix is None:
+			return "%s/%s/%s" % (os.getcwd(), dname, fname)
+		else:
+			return "%s/%s/%s.%s" % (os.getcwd(), dname, fname, suffix)
+
+	@staticmethod
+	def title_to_name(t):
+		"""
+		Translates the title to a file name.
+		There are several banned characters and will collapse whitespace, etc
+		"""
+
+		t = t.encode('ascii', errors='ignore').decode('ascii')
+
+		# Preserve these with a hyphen
+		t = t.replace(':', '-')
+		t = t.replace('/', '-')
+		t = t.replace('\\', '-')
+
+		# Just nuke these
+		t = t.replace('!', '')
+		t = t.replace('?', '')
+		t = t.replace('|', '')
+
+		# Collapse all multiple spaces into a single space (each replace will cut # of spaces
+		# by half, so assuming no more than 16 spaces
+		t = t.replace('  ', ' ')
+		t = t.replace('  ', ' ')
+		t = t.replace('  ', ' ')
+		t = t.replace('  ', ' ')
+		t = t.replace('  ', ' ')
+
+		# Get rid of whitespace on the ends
+		t = t.strip()
+
+		return t
+
+	@staticmethod
+	def alias_coerce(a):
+		# Coerce to ascii
+		a = a.encode('ascii', errors='ignore').decode('ascii')
+
+		if not a.isalnum():
+			raise ValueError("Alias must be alphanumeric")
+
+		return a
 
 def sync_channels_named(d, filt, ignore_old, rss_ok):
 	"""
@@ -507,21 +588,6 @@ def _sync_videos(d, ignore_old, summary, rows):
 		# Squash non-ASCII characters (I don't like emoji in file names)
 		name = ret['title'].encode('ascii', errors='ignore').decode('ascii')
 		# Get rid of characters that are bad for file names
-		name = name.replace(':', '-')
-		name = name.replace('/', '-')
-		name = name.replace('\\', '-')
-		name = name.replace('!', '')
-		name = name.replace('?', '')
-		name = name.replace('|', '')
-		# Collapse all multiple spaces into a single space (each replace will cut # of spaces
-		# by half, so assuming no more than 16 spaces
-		name = name.replace('  ', ' ')
-		name = name.replace('  ', ' ')
-		name = name.replace('  ', ' ')
-		name = name.replace('  ', ' ')
-		name = name.replace('  ', ' ')
-		# Get rid of trailing whitespace
-		name = name.strip()
 
 		# Format
 		atime = _now()
@@ -639,6 +705,8 @@ def _main():
 	p.add_argument('--title', help="Title of the video")
 
 	p.add_argument('--add', nargs='*', default=False, help="Add URL(s) to download")
+	p.add_argument('--name', nargs='+', default=False, help="Supply a YTID and file name to manually specify it")
+	p.add_argument('--alias', nargs='*', default=False, help="Add an alias for unnamed channels")
 	p.add_argument('--list', nargs='*', default=False, help="List of lists")
 	p.add_argument('--listall', nargs='*', default=False, help="Same as --list but will list all the videos too")
 	p.add_argument('--showpath', nargs='*', default=False, help="Show file paths for the given channels or YTID's")
@@ -658,6 +726,44 @@ def _main():
 	d = db(args.file)
 	d.open()
 
+	# Manually coerce the v.name from v.title
+	if False:
+		res = d.v.select(['rowid','title'], '')
+		rows = [dict(_) for _ in res]
+		d.begin()
+		for row in rows:
+			if row['title'] is None: continue
+
+			d.v.update({'rowid': row['rowid']}, {'name': db.title_to_name(row['title'])})
+		d.commit()
+
+		sys.exit()
+
+	# Manually coerce file names to v.name, or vnames.name if preent
+	if False:
+		res = d.v.select(['rowid','ytid'], "`dname`='AlaskaPrepper'")
+		rows = [dict(_) for _ in res]
+		for row in rows:
+			ytid = row['ytid']
+
+			# Get directory and preferred name
+			dname = d.get_v_dname(ytid)
+			name = d.get_v_fname(ytid, suffix=None)
+
+			# Find anything with the matching YTID and rename it
+			fs = glob.glob("%s/*%s*" % (dname, ytid))
+			for f in fs:
+				# Split up by the YTID: everything before is trashed, and file suffix is preserved
+				parts = f.rsplit(ytid, 1)
+
+				# Rebuild file name with preferred name, YTID, and the original suffix
+				dest = "%s-%s%s" % (name, ytid, parts[1])
+
+				if f != dest:
+					os.rename(f, dest)
+		sys.exit()
+
+
 	# Show paths of videos
 	if type(args.showpath) is list:
 		where = "(`ytid` in ({0}) or `dname` in ({0}))".format(",".join( ["'%s'" % _ for _ in args.showpath] ))
@@ -667,13 +773,7 @@ def _main():
 		rows = sorted(rows, key=lambda _: _['ytid'])
 
 		for row in rows:
-			cwd = os.getcwd()
-			dname = os.path.join(cwd, row['dname'])
-
-			# Append YTID to the file name
-			fname = row['name'] + '-' + row['ytid']
-
-			path = dname + '/' + fname + '.mkv'
+			path = d.get_v_fname(row['ytid'])
 
 			exists = os.path.exists(path)
 			if exists:
@@ -689,12 +789,15 @@ def _main():
 	if args.list is not False or args.listall is not False:
 		where = ""
 		where_pl = ""
+		where_ch = ""
 		if type(args.list) is list and len(args.list):
 			where = "`name` in (%s)" % ",".join( ["'%s'" % _ for _ in args.list] )
 			where_pl = "`ytid` in (%s)" % ",".join( ["'%s'" % _ for _ in args.list] )
+			where_ch = "`name` in ({0}) or `alias` in ({0})".format(",".join( ["'%s'" % _ for _ in args.list] ))
 		if type(args.listall) is list and len(args.listall):
 			where = "`name` in (%s)" % ",".join( ["'%s'" % _ for _ in args.listall] )
 			where_pl = "`ytid` in (%s)" % ",".join( ["'%s'" % _ for _ in args.listall] )
+			where_ch = "`name` in ({0}) or `alias` in ({0})".format(",".join( ["'%s'" % _ for _ in args.listall] ))
 
 		res = d.u.select("*", where)
 		rows = [dict(_) for _ in res]
@@ -753,29 +856,35 @@ def _main():
 						if exists:
 							counts += 1
 
-					if not exists:
-						if subsub_row is None:
-							print("\t\t%s: ?" % (sub_row['ytid'],))
-						else:
-							print("\t\t%s: %s (%s)%s" % (sub_row['ytid'], subsub_row['title'], sec_str(subsub_row['duration']), exists and " EXISTS" or ""))
+					if subsub_row is None:
+						print("\t\t%s: ?" % (sub_row['ytid'],))
+					else:
+						print("\t\t%s: %s (%s)%s" % (sub_row['ytid'], subsub_row['title'], sec_str(subsub_row['duration']), exists and " EXISTS" or ""))
 
 				print("\tExists: %d of %d" % (counts, len(sub_rows)))
 
 
 
-		res = d.ch.select("*", where)
+
+		res = d.ch.select(['rowid','name','alias'], where_ch)
 		rows = [dict(_) for _ in res]
-		rows = sorted(rows, key=lambda _: _['name'])
+		rows = sorted(rows, key=lambda _: _['alias'] or _['name'])
 
 		print("Unnamed channels (%d):" % len(rows))
 		for row in rows:
-			sub_res = d.vids.select(["rowid","ytid"], "`name`=?", [row['name']], "`idx` asc")
+			name = row['alias'] or row['name']
+
+			sub_res = d.vids.select(["rowid","ytid"], "`name`=?", [name], "`idx` asc")
 			sub_rows = [dict(_) for _ in sub_res]
 			sub_cnt = len(sub_rows)
 
-			print("\t%s (%d)" % (row['name'], sub_cnt))
+			if row['alias']:
+				print("\t%s -> %s (%d)" % (row['name'], row['alias'], sub_cnt))
+			else:
+				print("\t%s (%d)" % (row['name'], sub_cnt))
 
 			if type(args.listall) is list:
+				counts = 0
 				for sub_row in sub_rows:
 					subsub_row = d.v.select_one(["dname","name","title","duration"], "`ytid`=?", [sub_row['ytid']])
 					if subsub_row['title'] is None:
@@ -1012,6 +1121,149 @@ def _main():
 				d.v.update({"rowid": row['rowid']}, {"skip": False})
 			d.commit()
 
+	if args.name:
+		ytid = args.name[0]
+
+		if len(args.name) == 1:
+			row = d.v.select_one(['rowid','dname','name','title'], '`ytid`=?', [ytid])
+			if not row:
+				print("No video with YTID '%s' found" % ytid)
+				sys.exit()
+
+			print("YTID: %s" % ytid)
+			print("Title: %s" % row['title'])
+			print("Directory: %s" % row['dname'])
+			print("Computed name: %s" % row['name'])
+
+			row = d.vnames.select_one('name', '`ytid`=?', [ytid])
+			if row:
+				print("Preferred name: %s" % row['name'])
+
+		elif len(args.name) == 2:
+			pref_name = db.title_to_name(args.name[1])
+			if pref_name != args.name[1]:
+				raise KeyError("Name '%s' is not valid" % args.name[1])
+
+			dname = d.get_v_dname(ytid)
+
+			# Get file name without suffix
+			fname = d.get_v_fname(ytid, suffix=None)
+
+			# Find anything with the matching YTID and rename it
+			fs = glob.glob("%s/*%s*" % (dname, ytid))
+			for f in fs:
+				# Split up by the YTID: everything before is trashed, and file suffix is preserved
+				parts = f.rsplit(ytid, 1)
+
+				# Rebuild file name with preferred name, YTID, and the original suffix
+				dest = "%s/%s-%s%s" % (dname,pref_name, ytid, parts[1])
+
+				os.rename(f, dest)
+
+			d.begin()
+			row = d.vnames.select_one('rowid', '`ytid`=?', [ytid])
+			if row:
+				d.vnames.update({'rowid': row['rowid']}, {'name': pref_name})
+			else:
+				d.vnames.insert(ytid=ytid, name=pref_name)
+			d.commit()
+
+		else:
+			print("Too many arguments")
+
+		sys.exit()
+
+	if type(args.alias) is list:
+		if len(args.alias) == 0:
+			res = d.ch.select(['rowid','name','alias'])
+			rows = [dict(_) for _ in res]
+			print("Existing channels:")
+			for row in rows:
+				if row['alias'] is None:
+					print("\t%s" % row['name'])
+				else:
+					print("\t%s -> %s" % (row['name'], row['alias']))
+		elif len(args.alias) == 1:
+			row = d.ch.select_one(['name','alias'], "`name`=? or `alias`=?", [args.alias[0], args.alias[0]])
+			print("Channel: %s" % row['name'])
+			print("Alias: %s" % row['alias'])
+
+		elif len(args.alias) == 2:
+			res = d.ch.select('*', '`name`=?', [args.alias[1]])
+			rows = [dict(_) for _ in res]
+			if len(rows):
+				raise ValueError("Alias name already used for an unnamed channel: %s" % rows[0]['name'])
+
+			res = d.ch.select('*', '`alias`=?', [args.alias[1]])
+			rows = [dict(_) for _ in res]
+			if len(rows):
+				if rows[0]['name'] == args.alias[0]:
+					# Renaming to same alias
+					sys.exit()
+				else:
+					raise ValueError("Alias name already used for an unnamed channel: %s" % rows[0]['name'])
+
+			res = d.c.select('*', '`name`=?', [args.alias[1]])
+			rows = [dict(_) for _ in res]
+			if len(rows):
+				raise ValueError("Alias name already used for an named channel: %s" % rows[0]['name'])
+
+			res = d.u.select('*', '`name`=?', [args.alias[1]])
+			rows = [dict(_) for _ in res]
+			if len(rows):
+				raise ValueError("Alias name already used for a user: %s" % rows[0]['name'])
+
+
+
+			pref = db.alias_coerce(args.alias[1])
+			if pref != args.alias[1]:
+				raise KeyError("Alias '%s' is not valid" % args.name[1])
+
+			row = d.ch.select_one(['rowid','alias'], '`name`=?', [args.alias[0]])
+			if row is None:
+				raise ValueError("No channel by %s" % args.alias[0])
+
+			# Used for updating vids table
+			old_name = args.alias[0]
+
+
+			# Old and new directory names
+			old = os.getcwd() + '/' + args.alias[0]
+			new = os.getcwd() + '/' + pref
+
+			# If long ch.name exists on the filesystem then move it to the alias
+			if os.path.exists(old):
+				os.rename(old, new)
+
+			# If prior ch.alias exists then move it to the new alias
+			else:
+				# Nope, not there either
+				if row['alias'] is None:
+					raise ValueError("No channel directory exists at '%s'" % old)
+
+				# Move from old to new alias
+				else:
+					old_name = row['alias']
+
+					old = os.getcwd() + '/' + row['alias']
+					new = os.getcwd() + '/' + pref
+
+					if os.path.exists(old):
+						os.rename(old, new)
+
+			# Add/update alias to channel
+			d.begin()
+			d.ch.update({'rowid': row['rowid']}, {'alias': pref})
+			d.v.update({'dname': args.alias[0]}, {'dname': pref})
+			d.vids.update({'name': old_name}, {'name': pref})
+			d.commit()
+
+		else:
+			print("Too many variables")
+
+
+		sys.exit()
+
 	if args.sync is not False or args.sync_list is not False:
 		filt = None
 		if type(args.sync) is list:			filt = args.sync
@@ -1019,7 +1271,6 @@ def _main():
 
 		print("Update users")
 		sync_users(d, filt, ignore_old=args.ignore_old, rss_ok=(not args.no_rss))
-
 		print("Update unnamed channels")
 		sync_channels_unnamed(d, filt, ignore_old=args.ignore_old, rss_ok=(not args.no_rss))
 
