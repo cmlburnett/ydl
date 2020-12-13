@@ -851,6 +851,7 @@ def _main_listall(args, d, ytids):
 	# Count number of videos that exist
 	counts = 0
 
+	# ['abcd','efgh'] -> "'abcd','efgh'"
 	ytids_str = ",".join(["'%s'"%_ for _ in ytids])
 
 	# Get video data for all the videos supplied
@@ -864,13 +865,14 @@ def _main_listall(args, d, ytids):
 
 	# Iterate over ytids in order provided
 	for ytid in ytids:
-		# In vids but not v, yet
+		# In vids but not v (yet)
 		if ytid not in rows:
 			print("\t\t%s: ?" % ytid)
 			continue
 
 		row = rows[ytid]
 
+		# Check if there's an alias, otherwise format_v_fname takes None for the value
 		alias = None
 		if ytid in aliases:
 			alias = aliases[ytid]
@@ -878,6 +880,7 @@ def _main_listall(args, d, ytids):
 		# All DB querying is done above, so just format it
 		path = db.format_v_fname(row['dname'], row['name'], alias, ytid, "mkv")
 
+		# Check if it exists
 		exists = os.path.exists(path)
 		if exists:
 			counts += 1
@@ -885,7 +888,10 @@ def _main_listall(args, d, ytids):
 		if row['title'] is None:
 			print("\t\t%s: ?" % ytid)
 		else:
-			print("\t\t%s: %s (%s)%s" % (ytid, row['title'], sec_str(row['duration']), exists and " EXISTS" or ""))
+			if exists:
+				print("\t\t%s: %s (%s) EXISTS" % (ytid, row['title'], sec_str(row['duration'])))
+			else:
+				print("\t\t%s: %s (%s)" % (ytid, row['title'], sec_str(row['duration'])))
 
 	print("\tExists: %d of %d" % (counts, len(ytids)))
 
