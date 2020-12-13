@@ -830,18 +830,25 @@ def _main_showpath(args, d):
 
 def _main_list(args, d):
 	"""
+	List all the user, unnamed channels, named channels, and playlists.
+	If --listall supplied then list all of that and the videos for each list.
 	"""
+
+	_main_list_user(args, d)
+	_main_list_c(args, d)
+	_main_list_ch(args, d)
+	_main_list_pl(args, d)
+
+def _main_list_user(args, d):
+	"""
+	List the users.
+	"""
+
 	where = ""
-	where_pl = ""
-	where_ch = ""
 	if type(args.list) is list and len(args.list):
 		where = "`name` in (%s)" % ",".join( ["'%s'" % _ for _ in args.list] )
-		where_pl = "`ytid` in (%s)" % ",".join( ["'%s'" % _ for _ in args.list] )
-		where_ch = "`name` in ({0}) or `alias` in ({0})".format(",".join( ["'%s'" % _ for _ in args.list] ))
 	if type(args.listall) is list and len(args.listall):
 		where = "`name` in (%s)" % ",".join( ["'%s'" % _ for _ in args.listall] )
-		where_pl = "`ytid` in (%s)" % ",".join( ["'%s'" % _ for _ in args.listall] )
-		where_ch = "`name` in ({0}) or `alias` in ({0})".format(",".join( ["'%s'" % _ for _ in args.listall] ))
 
 	res = d.u.select("*", where)
 	rows = [dict(_) for _ in res]
@@ -867,13 +874,25 @@ def _main_list(args, d):
 				if exists:
 					counts += 1
 
-				print("\t\t%s: %s (%s)%s" % (sub_row['ytid'], subsub_row['title'], sec_str(subsub_row['duration']), exists and " EXISTS" or ""))
+				if subsub_row['duration']:
+					print("\t\t%s: %s (%s)%s" % (sub_row['ytid'], subsub_row['title'], sec_str(subsub_row['duration']), exists and " EXISTS" or ""))
+				else:
+					print("\t\t%s: %s" % (sub_row['ytid'], subsub_row['title']))
 
 
 			print("\tExists: %d of %d" % (counts, len(sub_rows)))
 
 
+def _main_list_c(args, d):
+	"""
+	List the named channels.
+	"""
 
+	where = ""
+	if type(args.list) is list and len(args.list):
+		where = "`name` in (%s)" % ",".join( ["'%s'" % _ for _ in args.list] )
+	if type(args.listall) is list and len(args.listall):
+		where = "`name` in (%s)" % ",".join( ["'%s'" % _ for _ in args.listall] )
 
 	res = d.c.select("*", where)
 	rows = [dict(_) for _ in res]
@@ -907,10 +926,18 @@ def _main_list(args, d):
 
 			print("\tExists: %d of %d" % (counts, len(sub_rows)))
 
+def _main_list_ch(args, d):
+	"""
+	List the unnamed channels.
+	"""
 
+	where = ""
+	if type(args.list) is list and len(args.list):
+		where = "`name` in ({0}) or `alias` in ({0})".format(",".join( ["'%s'" % _ for _ in args.list] ))
+	if type(args.listall) is list and len(args.listall):
+		where = "`name` in ({0}) or `alias` in ({0})".format(",".join( ["'%s'" % _ for _ in args.listall] ))
 
-
-	res = d.ch.select(['rowid','name','alias'], where_ch)
+	res = d.ch.select(['rowid','name','alias'], where)
 	rows = [dict(_) for _ in res]
 	rows = sorted(rows, key=lambda _: _['alias'] or _['name'])
 
@@ -945,11 +972,18 @@ def _main_list(args, d):
 
 			print("\tExists: %d of %d" % (counts, len(sub_rows)))
 
+def _main_list_pl(args, d):
+	"""
+	List the playlists.
+	"""
 
+	where = ""
+	if type(args.list) is list and len(args.list):
+		where = "`ytid` in (%s)" % ",".join( ["'%s'" % _ for _ in args.list] )
+	if type(args.listall) is list and len(args.listall):
+		where = "`ytid` in (%s)" % ",".join( ["'%s'" % _ for _ in args.listall] )
 
-
-
-	res = d.pl.select("*", where_pl)
+	res = d.pl.select("*", where)
 	rows = [dict(_) for _ in res]
 	rows = sorted(rows, key=lambda _: _['ytid'])
 
@@ -975,6 +1009,7 @@ def _main_list(args, d):
 				print("\t\t%s: %s (%s)%s" % (sub_row['ytid'], subsub_row['title'], sec_str(subsub_row['duration']), exists and " EXISTS" or ""))
 
 			print("\tExists: %d of %d" % (counts, len(sub_rows)))
+
 
 def _main_add(args, d):
 	# Processing list of URLs
