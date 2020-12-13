@@ -184,19 +184,19 @@ class db(SH):
 		if row is None:
 			raise ValueError("Video with YTID '%s' not found" % ytid)
 
-		return db.format_v_fname(row['dname'], row['name'], alias, suffix)
+		return db.format_v_fname(row['dname'], row['name'], alias, ytid, suffix)
 
 	@staticmethod
-	def format_v_fname(dname, name, alias, suffix):
+	def format_v_fname(dname, name, alias, ytid, suffix=None):
 		if alias is None:
 			fname = name
 		else:
 			fname = alias
 
 		if suffix is None:
-			return "%s/%s/%s" % (os.getcwd(), dname, fname)
+			return "%s/%s/%s-%s" % (os.getcwd(), dname, fname, ytid)
 		else:
-			return "%s/%s/%s.%s" % (os.getcwd(), dname, fname, suffix)
+			return "%s/%s/%s-%s.%s" % (os.getcwd(), dname, fname, ytid, suffix)
 
 	@staticmethod
 	def title_to_name(t):
@@ -876,7 +876,7 @@ def _main_listall(args, d, ytids):
 			alias = aliases[ytid]
 
 		# All DB querying is done above, so just format it
-		path = db.format_v_fname(row['dname'], row['name'], alias, "mkv")
+		path = db.format_v_fname(row['dname'], row['name'], alias, ytid, "mkv")
 
 		exists = os.path.exists(path)
 		if exists:
@@ -886,7 +886,6 @@ def _main_listall(args, d, ytids):
 			print("\t\t%s: ?" % ytid)
 		else:
 			print("\t\t%s: %s (%s)%s" % (ytid, row['title'], sec_str(row['duration']), exists and " EXISTS" or ""))
-
 
 	print("\tExists: %d of %d" % (counts, len(ytids)))
 
@@ -915,13 +914,10 @@ def _main_list_user(args, d):
 
 		print("\t%s (%d)" % (row['name'], sub_cnt))
 
-		# Not --listall, so don't do videos
-		if type(args.listall) is not list:
-			continue
-
-		# Pass in just a list of YTID's
-		ytids = [_['ytid'] for _ in sub_rows]
-		_main_listall(args, d, ytids)
+		# Do only if --listall
+		if type(args.listall) is list:
+			ytids = [_['ytid'] for _ in sub_rows]
+			_main_listall(args, d, ytids)
 
 def _main_list_c(args, d):
 	"""
@@ -946,13 +942,10 @@ def _main_list_c(args, d):
 
 		print("\t%s (%d)" % (row['name'], sub_cnt))
 
-		# Not --listall, so don't do videos
-		if type(args.listall) is not list:
-			continue
-
-		# Pass in just a list of YTID's
-		ytids = [_['ytid'] for _ in sub_rows]
-		_main_listall(args, d, ytids)
+		# Do only if --listall
+		if type(args.listall) is list:
+			ytids = [_['ytid'] for _ in sub_rows]
+			_main_listall(args, d, ytids)
 
 def _main_list_ch(args, d):
 	"""
@@ -982,13 +975,10 @@ def _main_list_ch(args, d):
 		else:
 			print("\t%s (%d)" % (row['name'], sub_cnt))
 
-		# Not --listall, so don't do videos
-		if type(args.listall) is not list:
-			continue
-
-		# Pass in just a list of YTID's
-		ytids = [_['ytid'] for _ in sub_rows]
-		_main_listall(args, d, ytids)
+		# Do only if --listall
+		if type(args.listall) is list:
+			ytids = [_['ytid'] for _ in sub_rows]
+			_main_listall(args, d, ytids)
 
 def _main_list_pl(args, d):
 	"""
@@ -1013,13 +1003,10 @@ def _main_list_pl(args, d):
 
 		print("\t%s (%d)" % (row['ytid'], sub_cnt))
 
-		# Not --listall, so don't do videos
-		if type(args.listall) is not list:
-			continue
-
-		# Pass in just a list of YTID's
-		ytids = [_['ytid'] for _ in sub_rows]
-		_main_listall(args, d, ytids)
+		# Do only if --listall
+		if type(args.listall) is list:
+			ytids = [_['ytid'] for _ in sub_rows]
+			_main_listall(args, d, ytids)
 
 def _main_add(args, d):
 	# Processing list of URLs
