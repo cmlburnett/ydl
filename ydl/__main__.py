@@ -176,18 +176,22 @@ class db(SH):
 	def get_v_fname(self, ytid, suffix='mkv'):
 		# Get preferred name, if one is set
 		row = self.vnames.select_one('name', '`ytid`=?', [ytid])
+		alias = None
 		if row:
-			fname = row['name']
-		else:
-			fname = None
+			alias = row['name']
 
 		row = self.v.select_one(['dname','name'], '`ytid`=?', [ytid])
 		if row is None:
 			raise ValueError("Video with YTID '%s' not found" % ytid)
 
-		dname = row['dname']
-		if fname is None:
-			fname = row['name']
+		return db.format_v_fname(row['dname'], row['name'], alias, suffix)
+
+	@staticmethod
+	def format_v_fname(dname, name, alias, suffix):
+		if alias is None:
+			fname = name
+		else:
+			fname = alias
 
 		if suffix is None:
 			return "%s/%s/%s" % (os.getcwd(), dname, fname)
@@ -839,6 +843,54 @@ def _main_list(args, d):
 	_main_list_ch(args, d)
 	_main_list_pl(args, d)
 
+def _main_listall(args, d, ytids):
+	"""
+	List the videos for the YTID's provided in @ytids.
+	"""
+
+	# Count number of videos that exist
+	counts = 0
+
+	ytids_str = ",".join(["'%s'"%_ for _ in ytids])
+
+	# Get video data for all the videos supplied
+	# I don't know if there's a query length limit...
+	res = d.v.select(["ytid","dname","name","title","duration"], "`ytid` in (%s)" % ytids_str)
+	rows = {_['ytid']:_ for _ in res}
+
+	# Map ytids to alias
+	res = d.vnames.select(["ytid","name"], "`ytid` in (%s)" % ytids_str)
+	aliases = {_['ytid']:_['name'] for _ in res}
+
+	# Iterate over ytids in order provided
+	for ytid in ytids:
+		# In vids but not v, yet
+		if ytid not in rows:
+			print("\t\t%s: ?" % ytid)
+			continue
+
+		row = rows[ytid]
+
+		alias = None
+		if ytid in aliases:
+			alias = aliases[ytid]
+
+		# All DB querying is done above, so just format it
+		path = db.format_v_fname(row['dname'], row['name'], alias, "mkv")
+
+		exists = os.path.exists(path)
+		if exists:
+			counts += 1
+
+		if row['title'] is None:
+			print("\t\t%s: ?" % ytid)
+		else:
+			print("\t\t%s: %s (%s)%s" % (ytid, row['title'], sec_str(row['duration']), exists and " EXISTS" or ""))
+
+
+	print("\tExists: %d of %d" % (counts, len(ytids)))
+
+
 def _main_list_user(args, d):
 	"""
 	List the users.
@@ -867,25 +919,9 @@ def _main_list_user(args, d):
 		if type(args.listall) is not list:
 			continue
 
-		# Count number of videos that exist
-		counts = 0
-
-		for sub_row in sub_rows:
-			subsub_row = d.v.select_one(["dname","name","title","duration"], "`ytid`=?", [sub_row['ytid']])
-
-			path = d.get_v_fname(sub_row['ytid'])
-			exists = os.path.exists(path)
-			if exists:
-				counts += 1
-
-			if subsub_row['duration']:
-				print("\t\t%s: %s (%s)%s" % (sub_row['ytid'], subsub_row['title'], sec_str(subsub_row['duration']), exists and " EXISTS" or ""))
-			else:
-				print("\t\t%s: %s" % (sub_row['ytid'], subsub_row['title']))
-
-
-		print("\tExists: %d of %d" % (counts, len(sub_rows)))
-
+		# Pass in just a list of YTID's
+		ytids = [_['ytid'] for _ in sub_rows]
+		_main_listall(args, d, ytids)
 
 def _main_list_c(args, d):
 	"""
@@ -910,25 +946,13 @@ def _main_list_c(args, d):
 
 		print("\t%s (%d)" % (row['name'], sub_cnt))
 
-		if type(args.listall) is list:
-			counts = 0
+		# Not --listall, so don't do videos
+		if type(args.listall) is not list:
+			continue
 
-			for sub_row in sub_rows:
-				subsub_row = d.v.select_one(["dname","name","title","duration"], "`ytid`=?", [sub_row['ytid']])
-
-				exists = False
-				if subsub_row:
-					path = d.get_v_fname(sub_row['ytid'])
-					exists = os.path.exists(path)
-					if exists:
-						counts += 1
-
-				if subsub_row is None:
-					print("\t\t%s: ?" % (sub_row['ytid'],))
-				else:
-					print("\t\t%s: %s (%s)%s" % (sub_row['ytid'], subsub_row['title'], sec_str(subsub_row['duration']), exists and " EXISTS" or ""))
-
-			print("\tExists: %d of %d" % (counts, len(sub_rows)))
+		# Pass in just a list of YTID's
+		ytids = [_['ytid'] for _ in sub_rows]
+		_main_listall(args, d, ytids)
 
 def _main_list_ch(args, d):
 	"""
@@ -958,23 +982,13 @@ def _main_list_ch(args, d):
 		else:
 			print("\t%s (%d)" % (row['name'], sub_cnt))
 
-		if type(args.listall) is list:
-			counts = 0
-			for sub_row in sub_rows:
-				subsub_row = d.v.select_one(["dname","name","title","duration"], "`ytid`=?", [sub_row['ytid']])
-				if subsub_row['title'] is None:
-					print("\t\t%s: ? (?)" % (sub_row['ytid'],))
-				else:
-					exists = False
-					if subsub_row:
-						path = d.get_v_fname(sub_row['ytid'])
-						exists = os.path.exists(path)
-						if exists:
-							counts += 1
+		# Not --listall, so don't do videos
+		if type(args.listall) is not list:
+			continue
 
-					print("\t\t%s: %s (%s)%s" % (sub_row['ytid'], subsub_row['title'], sec_str(subsub_row['duration']), exists and " EXISTS" or ""))
-
-			print("\tExists: %d of %d" % (counts, len(sub_rows)))
+		# Pass in just a list of YTID's
+		ytids = [_['ytid'] for _ in sub_rows]
+		_main_listall(args, d, ytids)
 
 def _main_list_pl(args, d):
 	"""
@@ -999,21 +1013,13 @@ def _main_list_pl(args, d):
 
 		print("\t%s (%d)" % (row['ytid'], sub_cnt))
 
-		if type(args.listall) is list:
-			for sub_row in sub_rows:
-				subsub_row = d.v.select_one(["dname","name","title","duration"], "`ytid`=?", [sub_row['ytid']])
+		# Not --listall, so don't do videos
+		if type(args.listall) is not list:
+			continue
 
-				exists = False
-				if subsub_row:
-					path = d.get_v_fname(sub_row['ytid'])
-					exists = os.path.exists(path)
-					if exists:
-						counts += 1
-
-				print("\t\t%s: %s (%s)%s" % (sub_row['ytid'], subsub_row['title'], sec_str(subsub_row['duration']), exists and " EXISTS" or ""))
-
-			print("\tExists: %d of %d" % (counts, len(sub_rows)))
-
+		# Pass in just a list of YTID's
+		ytids = [_['ytid'] for _ in sub_rows]
+		_main_listall(args, d, ytids)
 
 def _main_add(args, d):
 	# Processing list of URLs
