@@ -6,9 +6,7 @@ import glob
 import json
 import logging
 import os
-import re
 import sys
-import time
 import traceback
 import urllib
 
@@ -482,9 +480,10 @@ def __sync_list(args, d, d_sub, rows, f_get_list, summary):
 						print("\t\t%d: %s (NEW)" % (v['idx'], v['ytid']))
 						d.vids.insert(name=c_name, ytid=v['ytid'], idx=v['idx'], atime=_now())
 
-				# Delete all old entries that are no longer on the list
+				# Remove all old entries that are no longer on the list by setting index to -1
+				# Don't delete so that there retains a mapping of video to original owning list
 				for ytid,rowid in old.items():
-					d.vids.delete({'rowid': '?'}, [rowid])
+					d.vids.update({'rowid': '?'}, {'idx': -1})
 
 				# Update or add video to the global videos list
 				for v in cur['info']:
