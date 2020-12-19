@@ -631,14 +631,12 @@ def _sync_videos(d, ignore_old, summary, rows):
 
 def download_videos(d, filt, ignore_old):
 	# Get total number of videos in the database
-	res = d.v.select(['rowid'], "")
-	total = len(res.fetchall())
+	total = d.v.num_rows()
 
 	print("%d videos in database" % total)
 
 	# See how many are skipped
-	res = d.v.select(['rowid'], "`skip`=1")
-	total = len(res.fetchall())
+	total = d.v.num_rows("`skip`=1")
 
 	if type(filt) is list and len(filt):
 		print("\tSkipped: %d (total skipped in DB, this flag is ignored if YTID's when channels are specified)" % total)
