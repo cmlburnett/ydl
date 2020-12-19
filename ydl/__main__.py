@@ -20,6 +20,7 @@ from sqlitehelper import SH, DBTable, DBCol, DBColROWID
 
 from .util import RSSHelper
 from .util import sec_str
+from .util import list_to_quoted_csv
 
 def _now():
 	""" Now """
@@ -152,7 +153,7 @@ class db(SH):
 		if type(filt) is list and len(filt):
 			# Can provide both YTID's and channel/user names to filter by in the same list
 			# So search both ytid colum and dname (same as user name, channel name, etc)
-			where = "`ytid` in ({0}) or `dname` in ({0})".format(",".join( ["'%s'" % _ for _ in filt] ))
+			where = "`ytid` in ({0}) or `dname` in ({0})".format(list_to_quoted_csv(filt))
 
 		# If ignore old is desired, then add it to the where clause
 		if ignore_old:
@@ -315,16 +316,17 @@ def _sync_list(args, d, d_sub, filt, col_name, ignore_old, rss_ok, ydl_func):
 	where = ""
 	if type(filt) is list and len(filt):
 		# FIXME: need to pass by value
-		where = "`%s` in (%s)" % (col_name, ",".join( ["'%s'" % _ for _ in filt] ))
+		where = "`%s` in (%s)" % (col_name, list_to_quoted_csv(filt))
 
 	if ignore_old:
 		if len(where): where += " AND "
 		where += "`atime` is null"
 
+	# Get list entries
 	res = d_sub.select(['rowid',col_name,'atime'], where)
 
 	# Convert to list of dict
-	rows = [dict(_) for _ in res]
+	rows = [dict(_) for _ in res.fetchall()]
 
 	# Map ytid/name to row
 	mp = {_[col_name]:_ for _ in rows}
@@ -434,79 +436,83 @@ def __sync_list(args, d, d_sub, rows, f_get_list, summary):
 		if rss_ok and not args.force:
 			continue
 		else:
-			print("\t\tChecking full list")
+			# Fetch full list
+			__sync_list_full(args, d, d_sub, rows, f_get_list, summary)
 
-		d.begin()
-		try:
-			cur = f_get_list(c_name, getVideoInfo=False)
-			cur = cur[0]
 
-			# Index old values by ytid to the rowid for updating
-			res = d.vids.select(["rowid","ytid"], "name=?", [c_name])
-			old = {r['ytid']:r['rowid'] for r in res}
+def __sync_list_full(args, d, d_sub, rows, f_get_list, summary):
+	"""
+	Fetch the full list
+	"""
 
-			# Check if all are old, then skip updating
-			all_old = True
+	print("\t\tChecking full list")
+
+	d.begin()
+	try:
+		cur = f_get_list(c_name, getVideoInfo=False)
+		cur = cur[0]
+
+		# Index old values by ytid to the rowid for updating
+		res = d.vids.select(["rowid","ytid"], "name=?", [c_name])
+		old = {r['ytid']:r['rowid'] for r in res}
+
+		# Check if all are old, then skip updating
+		all_old = True
+		for v in cur['info']:
+			if v['ytid'] not in old:
+				all_old = False
+				break
+
+		# Get vieos that are new and not in the full list
+		if new:
+			weird_diff = set(new) - set([_['ytid'] for _ in cur['info']])
+		else:
+			weird_diff = []
+
+		# At least one is new
+		if all_old and not args.force:
+			if weird_diff:
+				print("\t\tFound videos in RSS but not in video list, probably upcoming videos (%d)" % len(weird_diff))
+				for _ in weird_diff:
+					print("\t\t\t%s" % _)
+			else:
+				print("\t\tAll are old, no updates")
+		else:
+			# Update or add video to list in vids table
 			for v in cur['info']:
-				if v['ytid'] not in old:
-					all_old = False
-					break
+				# Update old index
+				if v['ytid'] in old:
+					print("\t\t%d: %s (OLD)" % (v['idx'], v['ytid']))
+					d.vids.update({'rowid': old[v['ytid']]}, {'idx': v['idx'], 'atime': _now()})
 
-			# Get vieos that are new and not in the full list
-			if new:
-				weird_diff = set(new) - set([_['ytid'] for _ in cur['info']])
-			else:
-				weird_diff = []
-
-			# At least one is new
-			if all_old and not args.force:
-				if weird_diff:
-					print("\t\tFound videos in RSS but not in video list, probably upcoming videos (%d)" % len(weird_diff))
-					for _ in weird_diff:
-						print("\t\t\t%s" % _)
+					# Remove from the old list (anything not removed will be considered deleted from the list)
+					del old[v['ytid']]
 				else:
-					print("\t\tAll are old, no updates")
-			else:
-				# Update or add video to list in vids table
-				for v in cur['info']:
-					# Update old index
-					if v['ytid'] in old:
-						print("\t\t%d: %s (OLD)" % (v['idx'], v['ytid']))
-						d.vids.update({'rowid': old[v['ytid']]}, {'idx': v['idx'], 'atime': _now()})
+					print("\t\t%d: %s (NEW)" % (v['idx'], v['ytid']))
+					d.vids.insert(name=c_name, ytid=v['ytid'], idx=v['idx'], atime=_now())
 
-						# Remove from the old list (anything not removed will be considered deleted from the list)
-						del old[v['ytid']]
-					else:
-						print("\t\t%d: %s (NEW)" % (v['idx'], v['ytid']))
-						d.vids.insert(name=c_name, ytid=v['ytid'], idx=v['idx'], atime=_now())
+			# Remove all old entries that are no longer on the list by setting index to -1
+			# Don't delete so that there retains a mapping of video to original owning list
+			for ytid,rowid in old.items():
+				d.vids.update({'rowid': '?'}, {'idx': -1})
 
-				# Remove all old entries that are no longer on the list by setting index to -1
-				# Don't delete so that there retains a mapping of video to original owning list
-				for ytid,rowid in old.items():
-					d.vids.update({'rowid': '?'}, {'idx': -1})
+			# Update or add video to the global videos list
+			for v in cur['info']:
+				vrow = d.v.select_one("rowid", "ytid=?", [v['ytid']])
+				if vrow:
+					d.v.update({'rowid': vrow['rowid']}, {'atime': None})
+				else:
+					n = _now()
+					# FIXME: dname is whatever list adds it first, but should favor
+					# the channel. Can happen if a playlist is added first, then the channel
+					# the video is on is added later.
+					d.v.insert(ytid=v['ytid'], ctime=n, atime=None, dname=c_name, skip=False)
 
-				# Update or add video to the global videos list
-				for v in cur['info']:
-					vrow = d.v.select_one("rowid", "ytid=?", [v['ytid']])
-					if vrow:
-						d.v.update({'rowid': vrow['rowid']}, {'atime': None})
-					else:
-						n = _now()
-						# FIXME: dname is whatever list adds it first, but should favor
-						# the channel. Can happen if a playlist is added first, then the channel
-						# the video is on is added later.
-						d.v.insert(ytid=v['ytid'], ctime=n, atime=None, dname=c_name, skip=False)
-
-			# upload playlist info
-			summary['info'][c_name] = {
-				'title': cur['title'],
-				'uploader': cur['uploader'],
-			}
-
-		except Exception:
-			traceback.print_exc()
-			summary['error'].append(c_name)
-			# Continue onward, ignore errors
+		# upload playlist info
+		summary['info'][c_name] = {
+			'title': cur['title'],
+			'uploader': cur['uploader'],
+		}
 
 		# Done with this list
 		if c_name not in summary['error']:
@@ -514,6 +520,11 @@ def __sync_list(args, d, d_sub, rows, f_get_list, summary):
 
 		d.commit()
 
+	except Exception:
+		traceback.print_exc()
+		summary['error'].append(c_name)
+		# Continue onward, ignore errors
+		d.rollback()
 
 
 
@@ -640,7 +651,7 @@ def download_videos(d, filt, ignore_old):
 	if type(filt) is list and len(filt):
 		# Can provide both YTID's and channel/user names to filter by in the same list
 		# So search both ytid colum and dname (same as user name, channel name, etc)
-		where = "(`ytid` in ({0}) or `dname` in ({0}))".format(",".join( ["'%s'" % _ for _ in filt] ))
+		where = "(`ytid` in ({0}) or `dname` in ({0}))".format(list_to_quoted_csv(filt))
 	else:
 		# Enable skip if not filtering
 		where = "`skip`!=1"
@@ -842,7 +853,7 @@ def _main_showpath(args, d):
 	if not len(args.showpath):
 		raise KeyError("Must provide a channel to list, use --list to get a list of them")
 
-	where = "(`ytid` in ({0}) or `dname` in ({0}))".format(",".join( ["'%s'" % _ for _ in args.showpath] ))
+	where = "(`ytid` in ({0}) or `dname` in ({0}))".format(list_to_quoted_csv(args.showpath))
 
 	res = d.v.select(['rowid','ytid','dname','name','title','duration'], where)
 	rows = [dict(_) for _ in res]
@@ -880,8 +891,7 @@ def _main_listall(args, d, ytids):
 	# Count number of videos that exist
 	counts = 0
 
-	# ['abcd','efgh'] -> "'abcd','efgh'"
-	ytids_str = ",".join(["'%s'"%_ for _ in ytids])
+	ytids_str = list_to_quoted_csv(ytids)
 
 	# Get video data for all the videos supplied
 	# I don't know if there's a query length limit...
@@ -932,9 +942,9 @@ def _main_list_user(args, d):
 
 	where = ""
 	if type(args.list) is list and len(args.list):
-		where = "`name` in (%s)" % ",".join( ["'%s'" % _ for _ in args.list] )
+		where = "`name` in (%s)" % list_to_quoted_csv(args.list)
 	if type(args.listall) is list and len(args.listall):
-		where = "`name` in (%s)" % ",".join( ["'%s'" % _ for _ in args.listall] )
+		where = "`name` in (%s)" % list_to_quoted_csv(args.listall)
 
 	res = d.u.select("*", where)
 	rows = [dict(_) for _ in res]
@@ -961,9 +971,9 @@ def _main_list_c(args, d):
 
 	where = ""
 	if type(args.list) is list and len(args.list):
-		where = "`name` in (%s)" % ",".join( ["'%s'" % _ for _ in args.list] )
+		where = "`name` in (%s)" % list_to_quoted_csv(args.list)
 	if type(args.listall) is list and len(args.listall):
-		where = "`name` in (%s)" % ",".join( ["'%s'" % _ for _ in args.listall] )
+		where = "`name` in (%s)" % list_to_quoted_csv(args.listall)
 
 	res = d.c.select("*", where)
 	rows = [dict(_) for _ in res]
@@ -989,9 +999,9 @@ def _main_list_ch(args, d):
 
 	where = ""
 	if type(args.list) is list and len(args.list):
-		where = "`name` in ({0}) or `alias` in ({0})".format(",".join( ["'%s'" % _ for _ in args.list] ))
+		where = "`name` in ({0}) or `alias` in ({0})".format(list_to_quoted_csv(args.list))
 	if type(args.listall) is list and len(args.listall):
-		where = "`name` in ({0}) or `alias` in ({0})".format(",".join( ["'%s'" % _ for _ in args.listall] ))
+		where = "`name` in ({0}) or `alias` in ({0})".format(list_to_quoted_csv(args.listall))
 
 	res = d.ch.select(['rowid','name','alias'], where)
 	rows = [dict(_) for _ in res]
@@ -1022,9 +1032,9 @@ def _main_list_pl(args, d):
 
 	where = ""
 	if type(args.list) is list and len(args.list):
-		where = "`ytid` in (%s)" % ",".join( ["'%s'" % _ for _ in args.list] )
+		where = "`ytid` in (%s)" % list_to_quoted_csv(args.list)
 	if type(args.listall) is list and len(args.listall):
-		where = "`ytid` in (%s)" % ",".join( ["'%s'" % _ for _ in args.listall] )
+		where = "`ytid` in (%s)" % list_to_quoted_csv(args.listall)
 
 	res = d.pl.select("*", where)
 	rows = [dict(_) for _ in res]

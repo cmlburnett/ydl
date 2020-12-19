@@ -155,3 +155,13 @@ class RSSHelper:
 			ret['ytids'].append(ytid)
 
 		return ret
+
+def list_to_quoted_csv(l):
+	"""
+	Convert a list to a quoted csv string
+
+	['abcd','efgh'] -> "'abcd','efgh'"
+	"""
+
+	return ",".join(["'%s'" % _ for _ in ytids])
+
