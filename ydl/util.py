@@ -163,5 +163,5 @@ def list_to_quoted_csv(l):
 	['abcd','efgh'] -> "'abcd','efgh'"
 	"""
 
-	return ",".join(["'%s'" % _ for _ in ytids])
+	return ",".join(["'%s'" % _ for _ in l])
 
