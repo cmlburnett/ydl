@@ -853,9 +853,9 @@ def _main_showpath(args, d):
 
 		exists = os.path.exists(path)
 		if exists:
-			print("%s: %s (%s) EXISTS" % (row['ytid'],row['title'],sec_str(row['duration'])))
+			print("%s: E %s (%s)" % (row['ytid'],row['title'],sec_str(row['duration'])))
 		else:
-			print("%s: %s (%s)" % (row['ytid'],row['title'],sec_str(row['duration'])))
+			print("%s:   %s (%s)" % (row['ytid'],row['title'],sec_str(row['duration'])))
 
 		print("\t%s" % path)
 		print()
@@ -918,9 +918,9 @@ def _main_listall(args, d, ytids):
 			print("\t\t%s: ?" % ytid)
 		else:
 			if exists:
-				print("\t\t%s: %s (%s) EXISTS" % (ytid, row['title'], sec_str(row['duration'])))
+				print("\t\t%s: E %s (%s)" % (ytid, row['title'], sec_str(row['duration'])))
 			else:
-				print("\t\t%s: %s (%s)" % (ytid, row['title'], sec_str(row['duration'])))
+				print("\t\t%s:   %s (%s)" % (ytid, row['title'], sec_str(row['duration'])))
 
 	print("\tExists: %d of %d" % (counts, len(ytids)))
 
