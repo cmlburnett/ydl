@@ -437,10 +437,10 @@ def __sync_list(args, d, d_sub, rows, f_get_list, summary):
 			continue
 		else:
 			# Fetch full list
-			__sync_list_full(args, d, d_sub, rows, f_get_list, summary)
+			__sync_list_full(args, d, d_sub, rows, f_get_list, summary,   c_name, new)
 
 
-def __sync_list_full(args, d, d_sub, rows, f_get_list, summary):
+def __sync_list_full(args, d, d_sub, rows, f_get_list, summary, c_name, new):
 	"""
 	Fetch the full list
 	"""
