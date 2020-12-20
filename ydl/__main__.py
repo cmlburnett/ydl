@@ -314,7 +314,10 @@ def _sync_list(args, d, d_sub, filt, col_name, ignore_old, rss_ok, ydl_func):
 	where = ""
 	if type(filt) is list and len(filt):
 		# FIXME: need to pass by value
-		where = "`%s` in (%s)" % (col_name, list_to_quoted_csv(filt))
+		if d_sub.Name == 'ch':
+			where = "`{0}` in ({1}) OR `alias` in ({1})".format(col_name, list_to_quoted_csv(filt))
+		else:
+			where = "`%s` in (%s)" % (col_name, list_to_quoted_csv(filt))
 
 	if ignore_old:
 		if len(where): where += " AND "
@@ -336,7 +339,7 @@ def _sync_list(args, d, d_sub, filt, col_name, ignore_old, rss_ok, ydl_func):
 	# - If old and rss_ok is True -> rss_ok True
 	#
 	# if atime is None then it's new, if atim is not None then it's old
-	rows = [(v[col_name], v['atime'] is not None and rss_ok) for k,v in mp.items()]
+	rows = [(v[col_name], v['atime'] is not None and rss_ok,v['rowid']) for k,v in mp.items()]
 	rows = sorted(rows, key=lambda _: _[0])
 
 	summary = {
@@ -373,9 +376,19 @@ def __sync_list(args, d, d_sub, rows, f_get_list, summary):
 	@summary -- dictionary to store results of syncing each list
 	"""
 
-	for c_name, rss_ok in rows:
+	for c_name, rss_ok, rowid in rows:
+		# Alternate column name (specifically for unnamed channels)
+		c_name_alt = None
+
 		# Print the name out to show progress
-		print("\t%s" % c_name)
+		if d_sub.Name == 'ch':
+			row = d_sub.select_one('alias', "`rowid`=?", [rowid])
+			c_name_alt = row[0]
+
+		if c_name_alt:
+			print("\t%s -> %s" % (c_name, c_name_alt))
+		else:
+			print("\t%s" % c_name)
 
 		# New list of YTID's from RSS, None if not processed
 		new = None
@@ -388,13 +401,15 @@ def __sync_list(args, d, d_sub, rows, f_get_list, summary):
 				# Found RSS url, just use that
 				url = row['url']
 			else:
+				_c = c_name_alt or c_name
+
 				# Find RSS URL from the list page
 				if d_sub.Name == 'c':
-					url = RSSHelper.GetByPage('http://www.youtube.com/c/%s' % c_name)
+					url = RSSHelper.GetByPage('http://www.youtube.com/c/%s' % _c)
 				elif d_sub.Name == 'ch':
-					url = RSSHelper.GetByPage('http://www.youtube.com/channel/%s' % c_name)
+					url = RSSHelper.GetByPage('http://www.youtube.com/channel/%s' % _c)
 				elif d_sub.Name == 'u':
-					url = RSSHelper.GetByPage('http://www.youtube.com/user/%s' % c_name)
+					url = RSSHelper.GetByPage('http://www.youtube.com/user/%s' % _c)
 				elif d_sub.Name == 'pl':
 					# Playlists don't have RSS feeds
 					url = False
@@ -403,7 +418,7 @@ def __sync_list(args, d, d_sub, rows, f_get_list, summary):
 
 				print("\t\tFound RSS from list page, saving to DB (%s)" % url)
 				d.begin()
-				d.RSS.insert(typ=d_sub.Name, name=c_name, url=url, atime=_now())
+				d.RSS.insert(typ=d_sub.Name, name=_c, url=url, atime=_now())
 				d.commit()
 
 			# Check that url was found
@@ -422,7 +437,7 @@ def __sync_list(args, d, d_sub, rows, f_get_list, summary):
 					new = ret['ytids']
 
 					for ytid in ret['ytids']:
-						row = d.vids.select_one('rowid', '`name`=? and `ytid`=?', [c_name, ytid])
+						row = d.vids.select_one('rowid', '`name`=? and `ytid`=?', [c_name_alt or c_name, ytid])
 						if not row:
 							print("\t\tRSS shows new videos, obtain full list")
 							rss_ok = False
@@ -435,10 +450,10 @@ def __sync_list(args, d, d_sub, rows, f_get_list, summary):
 			continue
 		else:
 			# Fetch full list
-			__sync_list_full(args, d, d_sub, rows, f_get_list, summary,   c_name, new)
+			__sync_list_full(args, d, d_sub, rows, f_get_list, summary,   c_name, c_name_alt, new)
 
 
-def __sync_list_full(args, d, d_sub, rows, f_get_list, summary, c_name, new):
+def __sync_list_full(args, d, d_sub, rows, f_get_list, summary, c_name, c_name_alt, new):
 	"""
 	Fetch the full list
 	"""
@@ -451,7 +466,7 @@ def __sync_list_full(args, d, d_sub, rows, f_get_list, summary, c_name, new):
 		cur = cur[0]
 
 		# Index old values by ytid to the rowid for updating
-		res = d.vids.select(["rowid","ytid"], "name=?", [c_name])
+		res = d.vids.select(["rowid","ytid"], "name=?", [c_name_alt or c_name])
 		old = {r['ytid']:r['rowid'] for r in res}
 
 		# Check if all are old, then skip updating
@@ -487,7 +502,7 @@ def __sync_list_full(args, d, d_sub, rows, f_get_list, summary, c_name, new):
 					del old[v['ytid']]
 				else:
 					print("\t\t%d: %s (NEW)" % (v['idx'], v['ytid']))
-					d.vids.insert(name=c_name, ytid=v['ytid'], idx=v['idx'], atime=_now())
+					d.vids.insert(name=(c_name_alt or c_name), ytid=v['ytid'], idx=v['idx'], atime=_now())
 
 			# Remove all old entries that are no longer on the list by setting index to -1
 			# Don't delete so that there retains a mapping of video to original owning list
@@ -504,7 +519,7 @@ def __sync_list_full(args, d, d_sub, rows, f_get_list, summary, c_name, new):
 					# FIXME: dname is whatever list adds it first, but should favor
 					# the channel. Can happen if a playlist is added first, then the channel
 					# the video is on is added later.
-					d.v.insert(ytid=v['ytid'], ctime=n, atime=None, dname=c_name, skip=False)
+					d.v.insert(ytid=v['ytid'], ctime=n, atime=None, dname=(c_name_alt or c_name), skip=False)
 
 		# upload playlist info
 		summary['info'][c_name] = {
