@@ -1389,7 +1389,8 @@ def _main_alias(args, d):
 		else:
 			# Nope, not there either
 			if row['alias'] is None:
-				raise ValueError("No channel directory exists at '%s'" % old)
+				print("No channel directory exists at '%s', making new" % old)
+				os.mkdir(new)
 
 			# Move from old to new alias
 			else:
