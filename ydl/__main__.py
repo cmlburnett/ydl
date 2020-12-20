@@ -14,8 +14,6 @@ import urllib
 import sqlite3
 import ydl
 
-logging.basicConfig(level=logging.ERROR)
-
 from sqlitehelper import SH, DBTable, DBCol, DBColROWID
 
 from .util import RSSHelper
@@ -711,6 +709,8 @@ def _main():
 	p = argparse.ArgumentParser()
 	p.add_argument('-f', '--file', default='ydl.db', help="use sqlite3 FILE (default ydl.db)")
 	p.add_argument('--stdin', action='store_true', default=False, help="Accept input on STDIN for parameters instead of arguments")
+	p.add_argument('--debug', choices=('debug','info','warning','error','critical'), default='error', help="Set logging level")
+
 	p.add_argument('--year', help="Year of video")
 	p.add_argument('--artist', help="Artist of the video")
 	p.add_argument('--title', help="Title of the video")
@@ -734,6 +734,14 @@ def _main():
 	p.add_argument('--ignore-old', action='store_true', default=False, help="Ignore old list items and old videos")
 	p.add_argument('--download', nargs='*', default=False, help="Download video")
 	args = p.parse_args()
+
+	if args.debug == 'debug':		logging.basicConfig(level=logging.DEBUG)
+	elif args.debug == 'info':		logging.basicConfig(level=logging.INFO)
+	elif args.debug == 'warning':	logging.basicConfig(level=logging.WARNING)
+	elif args.debug == 'error':		logging.basicConfig(level=logging.ERROR)
+	elif args.debug == 'critical':	logging.basicConfig(level=logging.CRITICAL)
+	else:
+		raise ValueError("Unrecognized logging level '%s'" % args.debug)
 
 	d = db(args.file)
 	d.open()
