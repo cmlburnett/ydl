@@ -698,6 +698,7 @@ def download_videos(d, filt, ignore_old):
 
 		# Append YTID to the file name
 		fname = row['name'] + '-' + row['ytid']
+		fname = fname.replace('%', '%%')
 
 		# Make subdir if it doesn't exist
 		if not os.path.exists(dname):
