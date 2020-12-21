@@ -165,3 +165,30 @@ def list_to_quoted_csv(l):
 
 	return ",".join(["'%s'" % _ for _ in l])
 
+def bytes_to_str(v, base2=True):
+	if base2:
+		k = v / (1024**1)
+		m = v / (1024**2)
+		g = v / (1024**3)
+		t = v / (1024**4)
+
+		if t > 1: return "%.3f TiB" % t
+		elif g > 1: return "%.3f GiB" % g
+		elif m > 1: return "%.3f MiB" % m
+		elif k > 1: return "%.3f KiB" % k
+		else:
+			return "%d B" % v
+
+	else:
+		k = v / (1000**1)
+		m = v / (1000**2)
+		g = v / (1000**3)
+		t = v / (1000**4)
+
+		if t > 0: return "%.3f TB" % t
+		elif g > 0: return "%.3f GB" % g
+		elif m > 0: return "%.3f MB" % m
+		elif k > 0: return "%.3f KB" % k
+		else:
+			return "%d B" % v
+

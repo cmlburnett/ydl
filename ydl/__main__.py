@@ -18,7 +18,7 @@ from sqlitehelper import SH, DBTable, DBCol, DBColROWID
 
 from .util import RSSHelper
 from .util import sec_str
-from .util import list_to_quoted_csv
+from .util import list_to_quoted_csv, bytes_to_str
 
 def _now():
 	""" Now """
@@ -737,13 +737,15 @@ def _main():
 	p.add_argument('--list', nargs='*', default=False, help="List of lists")
 	p.add_argument('--listall', nargs='*', default=False, help="Same as --list but will list all the videos too")
 	p.add_argument('--showpath', nargs='*', default=False, help="Show file paths for the given channels or YTID's")
-	p.add_argument('--json', action='store_true', default=False, help="Dump output as JSON")
-	p.add_argument('--xml', action='store_true', default=False, help="Dump output as XML")
-
-	p.add_argument('--force', action='store_true', default=False, help="Force the action, whatever it may pertain to")
-	p.add_argument('--no-rss', action='store_true', default=False, help="Don't use RSS to check status of lists")
 	p.add_argument('--skip', nargs='*', help="Skip the specified videos (supply no ids to get a list of skipped)")
 	p.add_argument('--unskip', nargs='*', help="Un-skip the specified videos (supply no ids to get a list of not skipped)")
+	p.add_argument('--info', nargs='+', default=False, help="Print out information about the video")
+
+	p.add_argument('--json', action='store_true', default=False, help="Dump output as JSON")
+	p.add_argument('--xml', action='store_true', default=False, help="Dump output as XML")
+	p.add_argument('--force', action='store_true', default=False, help="Force the action, whatever it may pertain to")
+	p.add_argument('--no-rss', action='store_true', default=False, help="Don't use RSS to check status of lists")
+
 	p.add_argument('--sync', nargs='*', default=False, help="Sync all metadata and playlists (does not download video data)")
 	p.add_argument('--sync-list', nargs='*', default=False, help="Sync just the lists (not videos)")
 	p.add_argument('--sync-videos', nargs='*', default=False, help="Sync just the videos (not lists)")
@@ -784,6 +786,9 @@ def _main():
 
 	if type(args.alias) is list:
 		_main_alias(args, d)
+
+	if type(args.info) is list:
+		_main_info(args, d)
 
 	if args.sync is not False or args.sync_list is not False:
 		_main_sync_list(args, d)
@@ -1431,6 +1436,49 @@ def _main_alias(args, d):
 
 	else:
 		print("Too many variables")
+
+def _main_info(args, d):
+	ytids = args.info
+
+	print("Showing information for videos (%d):" % len(ytids))
+
+	for ytid in ytids:
+		print("\t%s" % ytid)
+
+		row = d.v.select_one('*', '`ytid`=?', [ytid])
+
+		path = db.format_v_fname(row['dname'], row['name'], None, ytid, 'mkv')
+		exists = os.path.exists(path)
+		size = None
+		if exists:
+			size = os.stat(path).st_size
+			size = '%s (%d bytes)' % (bytes_to_str(size), size)
+		else:
+			size = ''
+
+
+		inf = [
+			['Title', row['title']],
+			['Duration (HH:MM:SS)', sec_str(row['duration'])],
+			['Name', row['name']],
+			['Directory Name', row['dname']],
+			['Uploader', row['uploader']],
+			['Upload Time', row['ptime']],
+			['Creation Time', row['ctime']],
+			['Access Time', row['atime']],
+			['Update Time', row['utime']],
+			['Skip?', row['skip']],
+			['Path', path],
+			['Exists?', exists],
+			['Size', size],
+		]
+
+		# Get maximum length of the keys
+		maxlen = max( [len(_[0]) for _ in inf] )
+
+		# Print out the information
+		for k,v in inf:
+			print('\t\t' + ("%0" + str(maxlen) + "s: %s") % (k,v))
 
 
 def _main_sync_list(args, d):
