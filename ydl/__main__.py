@@ -662,7 +662,7 @@ def download_videos(d, filt, ignore_old):
 	if type(filt) is list and len(filt):
 		# Can provide both YTID's and channel/user names to filter by in the same list
 		# So search both ytid colum and dname (same as user name, channel name, etc)
-		where = "(`ytid` in ({0}) or `dname` in ({0}))".format(list_to_quoted_csv(filt))
+		where = "(`ytid` in ({0}) or `dname` in ({0})) and `skip`!=1".format(list_to_quoted_csv(filt))
 	else:
 		# Enable skip if not filtering
 		where = "`skip`!=1"
