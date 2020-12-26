@@ -238,6 +238,13 @@ class db(SH):
 
 		return a
 
+	def is_skipped_video(self, ytid):
+		row = self.v.select_one('skip', '`ytid`=?', [ytid])
+		if not row:
+			raise ValueError("No video found '%s'" % ytid)
+
+		return row['skip']
+
 def sync_channels_named(args, d, filt, ignore_old, rss_ok):
 	"""
 	Sync "named" channels (I don't know how else to call them) that are /c/NAME
@@ -678,7 +685,7 @@ def download_videos(d, filt, ignore_old):
 		if where: where += " AND "
 		where += "`utime` is null"
 
-	res = d.v.select(['rowid','ytid','title','name','dname'], where)
+	res = d.v.select(['rowid','ytid','title','name','dname','atime'], where)
 	rows = res.fetchall()
 
 	if (type(filt) is list and len(filt)) or ignore_old:
@@ -699,11 +706,27 @@ def download_videos(d, filt, ignore_old):
 
 		print("\t%d of %d: %s" % (i+1, len(rows), row['ytid']))
 
+		# Video not sync'ed yet
+		if row['atime'] is None:
+			print("\t\tNot sync'ed, doing now")
+
+			print("----------------------------------------------")
+			sync_videos(d, [ytid], False)
+			print("----------------------------------------------")
+
+		# Get row again for updated info
+		row = d.v.select_one(['rowid','ytid','title','name','dname','atime'], "`rowid`=?", [row['rowid']])
+
+		if row['dname'] is None:
+			raise ValueError("Expected dname to be set for ytid '%s'" % row['dname'])
+		if row['name'] is None:
+			raise ValueError("Expected name to be set for ytid '%s'" % row['name'])
+
 		cwd = os.getcwd()
 		dname = os.path.join(cwd, row['dname'])
 
 		# Append YTID to the file name
-		fname = row['name'] + '-' + row['ytid']
+		fname = '%s-%s' % (row['name'], row['ytid'])
 		fname = fname.replace('%', '%%')
 
 		# Make subdir if it doesn't exist
@@ -928,7 +951,7 @@ def _main_listall(args, d, ytids):
 
 	# Get video data for all the videos supplied
 	# I don't know if there's a query length limit...
-	res = d.v.select(["ytid","dname","name","title","duration"], "`ytid` in (%s)" % ytids_str)
+	res = d.v.select(["ytid","dname","name","title","duration","skip"], "`ytid` in (%s)" % ytids_str)
 	rows = {_['ytid']:_ for _ in res}
 
 	# Map ytids to alias
@@ -939,10 +962,14 @@ def _main_listall(args, d, ytids):
 	for ytid in ytids:
 		# In vids but not v (yet)
 		if ytid not in rows:
-			print("\t\t%s: ?" % ytid)
+			print("\t\t%s:   ?" % ytid)
 			continue
 
 		row = rows[ytid]
+
+		if row['skip']:
+			print("\t\t%s: S" % ytid)
+			continue
 
 		# Check if there's an alias, otherwise format_v_fname takes None for the value
 		alias = None
