@@ -1456,10 +1456,13 @@ def _main_info(args, d):
 		else:
 			size = ''
 
+		dur = None
+		if row['duration']:
+			dur = sec_str(row['duration'])
 
 		inf = [
 			['Title', row['title']],
-			['Duration (HH:MM:SS)', sec_str(row['duration'])],
+			['Duration (HH:MM:SS)', dur],
 			['Name', row['name']],
 			['Directory Name', row['dname']],
 			['Uploader', row['uploader']],
