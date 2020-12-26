@@ -1520,7 +1520,7 @@ def _main_download(args, d):
 	if type(args.download) is list and len(args.download):
 		filt = args.download
 
-	print("Download vides")
+	print("Download videos")
 	download_videos(d, filt, ignore_old=args.ignore_old)
 
 
