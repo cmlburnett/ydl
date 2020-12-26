@@ -488,6 +488,12 @@ def __sync_list_full(args, d, d_sub, rows, f_get_list, summary, c_name, c_name_a
 				print("\t\tFound videos in RSS but not in video list, probably upcoming videos (%d)" % len(weird_diff))
 				for _ in weird_diff:
 					print("\t\t\t%s" % _)
+
+					# Ensure items are in the database
+					if d.vids.select_one('rowid', '`ytid`=?', [_]) is None:
+						d.vids.insert(name=(c_name_alt or c_name), ytid=_, idx=-1, atime=_now())
+					if d.v.select_one('rowid', '`ytid`=?', [_]) is None:
+						d.v.insert(ytid=_, ctime=None, atime=None, dname=(c_name_alt or c_name), skip=False)
 			else:
 				print("\t\tAll are old, no updates")
 		else:
