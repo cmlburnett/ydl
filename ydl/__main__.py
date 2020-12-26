@@ -501,7 +501,7 @@ def __sync_list_full(args, d, d_sub, rows, f_get_list, summary, c_name, c_name_a
 			for v in cur['info']:
 				# Update old index
 				if v['ytid'] in old:
-					print("\t\t%d: %s (OLD)" % (v['idx'], v['ytid']))
+					#print("\t\t%d: %s (OLD)" % (v['idx'], v['ytid']))
 					d.vids.update({'rowid': old[v['ytid']]}, {'idx': v['idx'], 'atime': _now()})
 
 					# Remove from the old list (anything not removed will be considered deleted from the list)
