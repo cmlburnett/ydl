@@ -1479,6 +1479,9 @@ def _main_info(args, d):
 		print("\t%s" % ytid)
 
 		row = d.v.select_one('*', '`ytid`=?', [ytid])
+		if row is None:
+			print("\t\tNot found")
+			continue
 
 		path = db.format_v_fname(row['dname'], row['name'], None, ytid, 'mkv')
 		exists = os.path.exists(path)
