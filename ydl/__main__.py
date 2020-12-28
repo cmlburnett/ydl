@@ -632,7 +632,7 @@ def _sync_videos(d, ignore_old, summary, rows):
 		# Format
 		atime = _now()
 		if ctime is None:
-			ctime = atim
+			ctime = atime
 
 		# Aggregate data
 		dat = {
