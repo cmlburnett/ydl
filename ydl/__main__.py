@@ -675,11 +675,7 @@ def download_videos(d, filt, ignore_old):
 
 	# See how many are skipped
 	total = d.v.num_rows("`skip`=1")
-
-	if type(filt) is list and len(filt):
-		print("\tSkipped: %d (total skipped in DB, this flag is ignored if YTID's when channels are specified)" % total)
-	else:
-		print("\tSkipped: %d" % total)
+	print("\tSkipped: %d" % total)
 
 
 	# Filter
