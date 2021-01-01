@@ -1124,7 +1124,6 @@ def _main_add(args, d):
 
 	for url in vals:
 		u = urllib.parse.urlparse(url)
-		print(u)
 
 		if u.scheme != 'https':
 			print(url)
