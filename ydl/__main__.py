@@ -463,6 +463,15 @@ def __sync_list(args, d, d_sub, rows, f_get_list, summary):
 def __sync_list_full(args, d, d_sub, rows, f_get_list, summary, c_name, c_name_alt, new):
 	"""
 	Fetch the full list
+	@args -- argparse result object
+	@d -- database object
+	@d_sub -- database table object for this particular list
+	@rows -- list of items to sync, tuple of (name, rss_ok)
+	@f_get_list -- function in ydl library to call to get list of videos
+	@summary -- dictionary to store results of syncing each list
+	@c_name -- column name that uniquely identifies the list (eg, c.name, ch.name, u.name, pl.ytid)
+	@c_name_alt -- alternate column name (namely for unnamed channels)
+	@new -- list of new YTID's from RSS feed, None otherwise
 	"""
 
 	print("\t\tChecking full list")
@@ -483,7 +492,7 @@ def __sync_list_full(args, d, d_sub, rows, f_get_list, summary, c_name, c_name_a
 				all_old = False
 				break
 
-		# Get vieos that are new and not in the full list
+		# Get videos that are new and not in the full list
 		if new:
 			weird_diff = set(new) - set([_['ytid'] for _ in cur['info']])
 		else:
