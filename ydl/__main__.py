@@ -478,7 +478,9 @@ def __sync_list_full(args, d, d_sub, rows, f_get_list, summary, c_name, c_name_a
 
 	d.begin()
 	try:
+		# Get list of videos using a ydl library function
 		cur = f_get_list(c_name, getVideoInfo=False)
+		# Passing only one, so get the first (and only) list item
 		cur = cur[0]
 
 		# Index old values by ytid to the rowid for updating
@@ -512,6 +514,7 @@ def __sync_list_full(args, d, d_sub, rows, f_get_list, summary, c_name, c_name_a
 						d.v.insert(ytid=_, ctime=None, atime=None, dname=(c_name_alt or c_name), skip=False)
 			else:
 				print("\t\tAll are old, no updates")
+
 		else:
 			# Update or add video to list in vids table
 			for v in cur['info']:
