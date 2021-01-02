@@ -722,6 +722,7 @@ def download_videos(d, filt, ignore_old):
 
 		# Video not sync'ed yet
 		if row['atime'] is None:
+			sys.exit()
 			print("\t\tNot sync'ed, doing now")
 
 			print("----------------------------------------------")
