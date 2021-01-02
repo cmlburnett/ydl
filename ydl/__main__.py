@@ -184,17 +184,21 @@ class db(SH):
 
 		return db.format_v_fname(row['dname'], row['name'], alias, ytid, suffix)
 
-	@staticmethod
-	def format_v_fname(dname, name, alias, ytid, suffix=None):
+	@classmethod
+	def format_v_names(cls, dname, name, alias, ytid, suffix=None):
 		if alias is None:
 			fname = name
 		else:
 			fname = alias
 
 		if suffix is None:
-			return "%s/%s/%s-%s" % (os.getcwd(), dname, fname, ytid)
+			return ("%s/%s" % (os.getcwd(), dname), "%s-%s" % (fname, ytid))
 		else:
-			return "%s/%s/%s-%s.%s" % (os.getcwd(), dname, fname, ytid, suffix)
+			return ("%s/%s" % (os.getcwd(), dname), "%s-%s.%s" % (fname, ytid, suffix))
+
+	@classmethod
+	def format_v_fname(cls, dname, name, alias, ytid, suffix=None):
+		return "/".join( cls.format_v_names(dname, name, alias, ytid, suffix) )
 
 	@staticmethod
 	def title_to_name(t):
@@ -693,6 +697,7 @@ def download_videos(d, filt, ignore_old):
 		if where: where += " AND "
 		where += "`utime` is null"
 
+	# Get videos based on filter designed above
 	res = d.v.select(['rowid','ytid','title','name','dname','atime'], where)
 	rows = res.fetchall()
 
@@ -709,6 +714,7 @@ def download_videos(d, filt, ignore_old):
 	ytids = list(rows.keys())
 	ytids = sorted(ytids)
 
+	# Fetch each video
 	for i,ytid in enumerate(ytids):
 		row = rows[ytid]
 
@@ -730,11 +736,8 @@ def download_videos(d, filt, ignore_old):
 		if row['name'] is None:
 			raise ValueError("Expected name to be set for ytid '%s'" % row['name'])
 
-		cwd = os.getcwd()
-		dname = os.path.join(cwd, row['dname'])
-
-		# Append YTID to the file name
-		fname = '%s-%s' % (row['name'], row['ytid'])
+		print(['row', dict(row)])
+		dname,fname = db.format_v_names(row['dname'], row['name'], None, row['ytid'])
 		fname = fname.replace('%', '%%')
 
 		# Make subdir if it doesn't exist
@@ -788,6 +791,7 @@ def _main():
 	p.add_argument('--sync-videos', nargs='*', default=False, help="Sync just the videos (not lists)")
 	p.add_argument('--ignore-old', action='store_true', default=False, help="Ignore old list items and old videos")
 	p.add_argument('--download', nargs='*', default=False, help="Download video")
+	p.add_argument('--update-names', nargs='*', default=False, help="Check and update file names to match v.name values (needed if title changed on YouTube after download)")
 	args = p.parse_args()
 
 	if args.debug == 'debug':		logging.basicConfig(level=logging.DEBUG)
@@ -833,6 +837,9 @@ def _main():
 	if args.sync is not False or args.sync_videos is not False:
 		_main_sync_videos(args, d)
 
+	if args.update_names is not False:
+		_main_updatenames(args, d)
+
 	if args.download is not False:
 		_main_download(args, d)
 
@@ -856,7 +863,7 @@ def _main_manual(args, d):
 
 	# Manually coerce file names to v.name, or vnames.name if preent
 	if False:
-		res = d.v.select(['rowid','ytid'], "`dname`='AdventureswJakeNicole'")
+		res = d.v.select(['rowid','ytid'], "`dname`=''")
 		rows = [dict(_) for _ in res]
 		for row in rows:
 			ytid = row['ytid']
@@ -882,7 +889,7 @@ def _main_manual(args, d):
 	# Fix utime's based on the existence of each completed video (utime=null if absent)
 	if False:
 		d.begin()
-		res = d.v.select(['rowid','ytid','atime','utime'])
+		res = d.v.select(['rowid','ytid','atime','utime'], "`dname`=''")
 		rows = [dict(_) for _ in res]
 		for i,row in enumerate(rows):
 			print("%d of %d: %s" % (i, len(rows), row['ytid']))
@@ -954,6 +961,7 @@ def _main_listall(args, d, ytids):
 
 	# Count number of videos that exist
 	counts = 0
+	skipped = 0
 
 	ytids_str = list_to_quoted_csv(ytids)
 
@@ -977,6 +985,7 @@ def _main_listall(args, d, ytids):
 
 		if row['skip']:
 			print("\t\t%s: S" % ytid)
+			skipped += 1
 			continue
 
 		# Check if there's an alias, otherwise format_v_fname takes None for the value
@@ -1000,8 +1009,8 @@ def _main_listall(args, d, ytids):
 			else:
 				print("\t\t%s:   %s (%s)" % (ytid, row['title'], sec_str(row['duration'])))
 
-	print("\tExists: %d of %d" % (counts, len(ytids)))
-
+	print("\tSkipped: %d of %d" % (skipped, len(ytids)))
+	print("\tExists: %d of %d non-skipped" % (counts, len(ytids)-skipped))
 
 def _main_list_user(args, d):
 	"""
@@ -1551,6 +1560,59 @@ def _main_sync_videos(args, d):
 
 	print("Sync all videos")
 	sync_videos(d, filt, ignore_old=args.ignore_old)
+
+def _main_updatenames(args, d):
+	print("Updating file names to v.name or with preferred name")
+
+	where = '`skip`=0'
+	if type(args.update_names) is list:
+		# Filter
+		where += " AND (`ytid` in ({0}) or `dname` in ({0}))".format( list_to_quoted_csv(args.update_names) )
+
+	res = d.v.select(['rowid','ytid','dname','name'], where)
+
+	basedir = os.getcwd()
+
+	summary = {
+		'same': [],
+		'change': [],
+	}
+
+	rows = [dict(_) for _ in res]
+	for i,row in enumerate(rows):
+		ytid = row['ytid']
+		dname = row['dname']
+		name = row['name']
+
+		# Get preferred name, if one is set
+		sub_row = d.vnames.select_one('name', '`ytid`=?', [ytid])
+		if sub_row:
+			name = sub_row['name']
+
+		print("\t%d of %d: %s" % (i+1, len(rows), row['ytid']))
+
+		# Change into the dir
+		os.chdir(basedir + '/' + dname)
+
+		# Find everything with that YTID
+		fs = glob.glob("*-%s*" % ytid)
+		for f in fs:
+			parts = f.rsplit(ytid, 1)
+
+			# Rename to new name
+			dest = "%s-%s%s" % (name, ytid, parts[1])
+
+			if f == dest:
+				summary['same'].append(ytid)
+			if f != dest:
+				print("\t\t%s -> %s" % (f, dest))
+				summary['change'].append(ytid)
+				os.rename(f, dest)
+
+		os.chdir(basedir)
+
+	print("Same: %d" % len(summary['same']))
+	print("Changed: %d" % len(summary['change']))
 
 def _main_download(args, d):
 	filt = []
