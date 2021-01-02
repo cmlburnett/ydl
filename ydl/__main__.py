@@ -698,7 +698,7 @@ def download_videos(d, filt, ignore_old):
 		where += "`utime` is null"
 
 	# Get videos based on filter designed above
-	res = d.v.select(['rowid','ytid','title','name','dname','atime'], where)
+	res = d.v.select(['rowid','ytid','title','name','dname','ctime','atime'], where)
 	rows = res.fetchall()
 
 	if (type(filt) is list and len(filt)) or ignore_old:
@@ -720,44 +720,107 @@ def download_videos(d, filt, ignore_old):
 
 		print("\t%d of %d: %s" % (i+1, len(rows), row['ytid']))
 
-		# Video not sync'ed yet
-		if row['atime'] is None:
-			sys.exit()
-			print("\t\tNot sync'ed, doing now")
-
-			print("----------------------------------------------")
-			sync_videos(d, [ytid], False)
-			print("----------------------------------------------")
-
-		# Get row again for updated info
-		row = d.v.select_one(['rowid','ytid','title','name','dname','atime'], "`rowid`=?", [row['rowid']])
+		# Get preferred name, if one is set
+		alias_row = d.vnames.select_one('name', '`ytid`=?', [ytid])
+		alias = None
+		if alias_row:
+			alias = alias_row['name']
 
 		if row['dname'] is None:
 			raise ValueError("Expected dname to be set for ytid '%s'" % row['dname'])
-		if row['name'] is None:
-			raise ValueError("Expected name to be set for ytid '%s'" % row['name'])
 
-		print(['row', dict(row)])
-		dname,fname = db.format_v_names(row['dname'], row['name'], None, row['ytid'])
-		fname = fname.replace('%', '%%')
+		# If hasn't been updated, then can do sync_videos(ytid) or just download it with ydl
+		# then use the info.json file to update the database (saves a call to youtube)
+		if row['atime'] is None:
+			print("\t\tVideo not synced yet, will get data from info.json file afterward")
 
-		# Make subdir if it doesn't exist
-		if not os.path.exists(dname):
-			os.mkdir(dname)
+			# If no name is present, use TEMP
+			if row['name']:
+				dname,fname = db.format_v_names(row['dname'], row['name'], alias, row['ytid'])
+			else:
+				dname,fname = db.format_v_names(row['dname'], 'TEMP', alias, row['ytid'])
 
-		try:
-			ydl.download(row['ytid'], fname, dname)
-		except KeyboardInterrupt:
-			break
-		except:
-			# Print it out to see it
-			traceback.print_exc()
-			# Skip errors, and keep downloading
-			continue
+			# Make subdir if it doesn't exist
+			if not os.path.exists(dname):
+				os.mkdir(dname)
 
-		d.begin()
-		d.v.update({"rowid": row['rowid']}, {'name': row['name'], 'utime': _now()})
-		d.commit()
+			print([row['ytid'], fname, dname])
+
+			# Download mkv file, description, info.json, thumbnails, etc
+			try:
+				# Escape percent signs
+				fname = fname.replace('%', '%%')
+				ydl.download(row['ytid'], fname, dname)
+			except KeyboardInterrupt:
+				break
+			except:
+				# Print it out to see it
+				traceback.print_exc()
+				# Skip errors, and keep downloading
+				continue
+
+			# Look for info.json file that contains title, uplaoder, etc
+			fs = glob.glob("%s/*-%s.info.json" % (dname,ytid))
+			if not len(fs):
+				raise Exception("Downloaded %s to %s/%s but unable to find info.json file" % (ytid, dname, fname))
+
+			# Load in the meta data
+			ret = json.load( open(fs[0], 'r') )
+
+			# Squash non-ASCII characters (I don't like emoji in file names)
+			name = db.title_to_name(ret['title'])
+
+			# Format
+			ctime = row['ctime']
+			atime = _now()
+			# Updated time is same as accessed time
+			utime = atime
+			if ctime is None:
+				ctime = atime
+
+			# Aggregate data
+			dat = {
+				'ytid': ytid,
+				'duration': ret['duration'],
+				'title': ret['title'],
+				'name': name,
+				'uploader': ret['uploader'],
+				'thumbnails': json.dumps(ret['thumbnails']),
+				'ptime': datetime.datetime.strptime(ret['upload_date'], "%Y%m%d"),
+				'ctime': ctime,
+				'atime': atime,
+				'utime': utime,
+			}
+
+			d.begin()
+			n = _now()
+			d.v.update({"rowid": row['rowid']}, dat)
+			d.commit()
+
+		else:
+			if row['name'] is None:
+				raise ValueError("Expected name to be set for ytid '%s'" % row['name'])
+
+			dname,fname = db.format_v_names(row['dname'], row['name'], alias, row['ytid'])
+			fname = fname.replace('%', '%%')
+
+			# Make subdir if it doesn't exist
+			if not os.path.exists(dname):
+				os.mkdir(dname)
+
+			try:
+				ydl.download(row['ytid'], fname, dname)
+			except KeyboardInterrupt:
+				break
+			except:
+				# Print it out to see it
+				traceback.print_exc()
+				# Skip errors, and keep downloading
+				continue
+
+			d.begin()
+			d.v.update({"rowid": row['rowid']}, {'name': row['name'], 'utime': _now()})
+			d.commit()
 
 
 def _main():
