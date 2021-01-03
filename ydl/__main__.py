@@ -209,6 +209,10 @@ class db(SH):
 
 		t = t.encode('ascii', errors='ignore').decode('ascii')
 
+		# Strip off leading decimals (glob won't find hidden dot files)
+		while t[0] == '.':
+			t = t[1:]
+
 		# Preserve these with a hyphen
 		t = t.replace(':', '-')
 		t = t.replace('/', '-')
