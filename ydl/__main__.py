@@ -253,6 +253,70 @@ class db(SH):
 
 		return row['skip']
 
+
+def _rename_files(dname, ytid, newname):
+	"""
+	Rename all files in directory @dname that contains the youtube ID @ytid into the form
+		NEWNAME-YTID.SUFFIX
+	"""
+
+	# Same base directory
+	basedir = os.getcwd()
+
+	# True if any files are moved
+	renamed = False
+
+	try:
+		# Step into sub directory
+		os.chdir(basedir + '/' + dname)
+
+		# Get all files with the YTID in it and all the dot files
+		fs = glob.glob('*%s*' % ytid)
+		fs2 = glob.glob('.*%s*' % ytid)
+		fs = fs + fs2
+
+		# Rename all the files
+		for f in fs:
+			# Can be "FOO-YTID.SFX"
+			# or "FOO-YTID_0.JPG"
+			# or "FOO - YTID - STUFF.SFX"
+			# or "FOO - YTID - STUFF_0.JPG"
+			parts = f.split(ytid)
+
+			# Get the dot suffix of the file
+			last = parts[-1].rsplit('.', 1)
+
+			# Only the thumbnails break the mold in terms of renaming
+			if last[0].endswith('_0'):
+				suffix = '_0.' + last[1]
+			elif last[0].endswith('_1'):
+				suffix = '_1.' + last[1]
+			elif last[0].endswith('_2'):
+				suffix = '_2.' + last[1]
+			elif last[0].endswith('_3'):
+				suffix = '_3.' + last[1]
+			else:
+				suffix = '.' + last[1]
+
+			# New pattern is "NEWNAME-YTID.SFX" or "NEWNAME-YTID_0.JPG"
+			dest = '%s-%s%s' % (newname, ytid, suffix)
+
+			# If different, print out the file names
+			if f != dest:
+				print("\t\t%s -> %s" % (f, dest))
+				renamed = True
+
+				# Rename
+				os.rename(f, dest)
+
+	finally:
+		# Go back to the base directory
+		os.chdir(basedir)
+
+	# True if any files are renamed
+	return renamed
+
+
 def sync_channels_named(args, d, filt, ignore_old, rss_ok):
 	"""
 	Sync "named" channels (I don't know how else to call them) that are /c/NAME
@@ -739,6 +803,9 @@ def download_videos(d, filt, ignore_old):
 		if row['atime'] is None:
 			print("\t\tVideo not synced yet, will get data from info.json file afterward")
 
+			# Keep the real directory name
+			dname_real = row['dname']
+
 			# Use name if there happens to be one that is present with atime being null
 			if row['name']:
 				dname,fname = db.format_v_names(row['dname'], row['name'], alias, row['ytid'])
@@ -800,16 +867,7 @@ def download_videos(d, filt, ignore_old):
 
 			# Rename TEMP files
 			if not row['name']:
-				fs = glob.glob("%s/*%s*" % (dname, ytid))
-				for f in fs:
-					# Split up by the YTID: everything before is trashed, and file suffix is preserved
-					parts = f.rsplit(ytid, 1)
-
-					# Rebuild file name with preferred name, YTID, and the original suffix
-					dest = "%s/%s-%s%s" % (dname, name, ytid, parts[1])
-
-					os.rename(f, dest)
-					print("\t\t%s -> %s" % (f, dest))
+				_rename_files(dname_real, ytid, name)
 
 		# Name was present so just download
 		else:
@@ -1468,16 +1526,8 @@ def _main_name(args, d):
 		# Get file name without suffix
 		fname = d.get_v_fname(ytid, suffix=None)
 
-		# Find anything with the matching YTID and rename it
-		fs = glob.glob("%s/*%s*" % (dname, ytid))
-		for f in fs:
-			# Split up by the YTID: everything before is trashed, and file suffix is preserved
-			parts = f.rsplit(ytid, 1)
-
-			# Rebuild file name with preferred name, YTID, and the original suffix
-			dest = "%s/%s-%s%s" % (dname,pref_name, ytid, parts[1])
-
-			os.rename(f, dest)
+		# Rename old files
+		_rename_files(dname, ytid, pref_name)
 
 		d.begin()
 		row = d.vnames.select_one('rowid', '`ytid`=?', [ytid])
@@ -1749,29 +1799,12 @@ def _main_updatenames(args, d):
 
 		print("\t%d of %d: %s" % (i+1, len(rows), row['ytid']))
 
-		# Change into the dir
-		os.chdir(basedir + '/' + dname)
-
 		# Find everything with that YTID (glob ignores dot files)
-		fs = glob.glob("*%s*" % ytid)
-		fs2= glob.glob(".*%s*" % ytid)
-		fs = fs + fs2
-
-		for f in fs:
-			parts = f.rsplit(ytid, 1)
-			subparts = parts[1].rsplit('.', 1)
-
-			# Rename to new name
-			dest = "%s-%s.%s" % (name, ytid, subparts[1])
-
-			if f == dest:
-				summary['same'].append(ytid)
-			if f != dest:
-				print("\t\t%s -> %s" % (f, dest))
-				summary['change'].append(ytid)
-				os.rename(f, dest)
-
-		os.chdir(basedir)
+		renamed = _rename_files(dname, ytid, name)
+		if renamed:
+			summary['change'].append(ytid)
+		else:
+			summary['same'].append(ytid)
 
 	print("Same: %d" % len(summary['same']))
 	print("Changed: %d" % len(summary['change']))
