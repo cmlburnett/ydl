@@ -730,6 +730,7 @@ def download_videos(d, filt, ignore_old):
 		if alias_row:
 			alias = alias_row['name']
 
+		# Required
 		if row['dname'] is None:
 			raise ValueError("Expected dname to be set for ytid '%s'" % row['dname'])
 
