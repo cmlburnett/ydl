@@ -1562,48 +1562,112 @@ def _main_info(args, d):
 	print("Showing information for videos (%d):" % len(ytids))
 
 	for ytid in ytids:
-		print("\t%s" % ytid)
-
 		row = d.v.select_one('*', '`ytid`=?', [ytid])
-		if row is None:
-			print("\t\tNot found")
+		if row is not None:
+			_main_info_v(args, d, ytid, row)
 			continue
 
-		path = db.format_v_fname(row['dname'], row['name'], None, ytid, 'mkv')
-		exists = os.path.exists(path)
-		size = None
-		if exists:
-			size = os.stat(path).st_size
-			size = '%s (%d bytes)' % (bytes_to_str(size), size)
-		else:
-			size = ''
+		# Check if named channel
+		row = d.c.select_one('*', '`name`=?', [ytid])
+		if row is not None:
+			print("\tNamed channel %s:" % ytid)
+			rows = d.v.select('*', '`dname`=?', [ytid])
+			rows = [dict(_) for _ in rows]
+			rows = sorted(rows, key=lambda x: x['ytid'])
 
-		dur = None
-		if row['duration']:
-			dur = sec_str(row['duration'])
+			for row in rows:
+				_main_info_v(args, d, row['ytid'], row)
 
-		inf = [
-			['Title', row['title']],
-			['Duration (HH:MM:SS)', dur],
-			['Name', row['name']],
-			['Directory Name', row['dname']],
-			['Uploader', row['uploader']],
-			['Upload Time', row['ptime']],
-			['Creation Time', row['ctime']],
-			['Access Time', row['atime']],
-			['Update Time', row['utime']],
-			['Skip?', row['skip']],
-			['Path', path],
-			['Exists?', exists],
-			['Size', size],
-		]
+			# Don't, next @ytids entry
+			continue
 
-		# Get maximum length of the keys
-		maxlen = max( [len(_[0]) for _ in inf] )
+		# Check if unnamed channel
+		row = d.ch.select_one('*', '`name`=?', [ytid])
+		if row is not None:
+			print("\tUnnamed channel %s:" % ytid)
+			rows = d.v.select('*', '`dname`=?', [ytid])
+			rows = [dict(_) for _ in rows]
+			rows = sorted(rows, key=lambda x: x['ytid'])
 
-		# Print out the information
-		for k,v in inf:
-			print('\t\t' + ("%0" + str(maxlen) + "s: %s") % (k,v))
+			for row in rows:
+				_main_info_v(args, d, row['ytid'], row)
+
+			# Don't, next @ytids entry
+			continue
+
+		# Check if user
+		row = d.u.select_one('*', '`name`=?', [ytid])
+		if row is not None:
+			print("\tUser %s:" % ytid)
+			rows = d.v.select('*', '`dname`=?', [ytid])
+			rows = [dict(_) for _ in rows]
+			rows = sorted(rows, key=lambda x: x['ytid'])
+
+			for row in rows:
+				_main_info_v(args, d, row['ytid'], row)
+
+			# Don't, next @ytids entry
+			continue
+
+		# Check if palylist
+		row = d.pl.select_one('*', '`ytid`=?', [ytid])
+		if row is not None:
+			print("\tPlaylist %s:" % ytid)
+			rows = d.v.select('*', '`dname`=?', [ytid])
+			rows = [dict(_) for _ in rows]
+			rows = sorted(rows, key=lambda x: x['ytid'])
+
+			for row in rows:
+				_main_info_v(args, d, row['ytid'], row)
+
+			# Don't, next @ytids entry
+			continue
+
+		print("\t%s -- NOT FOUND" % ytid)
+
+def _main_info_v(args, d, ytid, row):
+	row = d.v.select_one('*', '`ytid`=?', [ytid])
+	if row is None:
+		print("\t\tNot found")
+		return
+
+	path = db.format_v_fname(row['dname'], row['name'], None, ytid, 'mkv')
+	exists = os.path.exists(path)
+	size = None
+	if exists:
+		size = os.stat(path).st_size
+		size = '%s (%d bytes)' % (bytes_to_str(size), size)
+	else:
+		size = ''
+
+	dur = None
+	if row['duration']:
+		dur = sec_str(row['duration'])
+
+	inf = [
+		['YTID', row['ytid']],
+		['Title', row['title']],
+		['Duration (HH:MM:SS)', dur],
+		['Name', row['name']],
+		['Directory Name', row['dname']],
+		['Uploader', row['uploader']],
+		['Upload Time', row['ptime']],
+		['Creation Time', row['ctime']],
+		['Access Time', row['atime']],
+		['Update Time', row['utime']],
+		['Skip?', row['skip']],
+		['Path', path],
+		['Exists?', exists],
+		['Size', size],
+	]
+
+	# Get maximum length of the keys
+	maxlen = max( [len(_[0]) for _ in inf] )
+
+	# Print out the information
+	for k,v in inf:
+		print('\t\t' + ("%0" + str(maxlen) + "s: %s") % (k,v))
+	print()
 
 
 def _main_sync_list(args, d):
