@@ -1095,8 +1095,9 @@ def _main_listall(args, d, ytids):
 			else:
 				print("\t\t%s:   %s (%s)" % (ytid, row['title'], sec_str(row['duration'])))
 
-	print("\tSkipped: %d of %d" % (skipped, len(ytids)))
-	print("\tExists: %d of %d non-skipped" % (counts, len(ytids)-skipped))
+	print()
+	print("\t\tSkipped: %d of %d" % (skipped, len(ytids)))
+	print("\t\tExists: %d of %d non-skipped" % (counts, len(ytids)-skipped))
 
 def _main_list_user(args, d):
 	"""
