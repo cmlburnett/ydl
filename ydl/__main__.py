@@ -749,8 +749,6 @@ def download_videos(d, filt, ignore_old):
 			if not os.path.exists(dname):
 				os.mkdir(dname)
 
-			print([row['ytid'], fname, dname])
-
 			# Download mkv file, description, info.json, thumbnails, etc
 			try:
 				# Escape percent signs
