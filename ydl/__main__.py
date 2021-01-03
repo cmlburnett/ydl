@@ -1092,10 +1092,12 @@ def _main_listall(args, d, ytids):
 		if row['title'] is None:
 			print("\t\t%s: ?" % ytid)
 		else:
+			t = row['title']
+			t = t.replace('\n', '\\n')
 			if exists:
-				print("\t\t%s: E %s (%s)" % (ytid, row['title'], sec_str(row['duration'])))
+				print("\t\t%s: E %s (%s)" % (ytid, t, sec_str(row['duration'])))
 			else:
-				print("\t\t%s:   %s (%s)" % (ytid, row['title'], sec_str(row['duration'])))
+				print("\t\t%s:   %s (%s)" % (ytid, t, sec_str(row['duration'])))
 
 	print()
 	print("\t\tSkipped: %d of %d" % (skipped, len(ytids)))
