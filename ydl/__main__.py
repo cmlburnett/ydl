@@ -722,7 +722,7 @@ def download_videos(d, filt, ignore_old):
 	for i,ytid in enumerate(ytids):
 		row = rows[ytid]
 
-		print("\t%d of %d: %s" % (i+1, len(rows), row['ytid']))
+		print("\t%d of %d: %s" % (i+1, len(rows), ytid))
 
 		# Get preferred name, if one is set
 		alias_row = d.vnames.select_one('name', '`ytid`=?', [ytid])
