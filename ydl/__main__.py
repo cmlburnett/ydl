@@ -739,10 +739,13 @@ def download_videos(d, filt, ignore_old):
 		if row['atime'] is None:
 			print("\t\tVideo not synced yet, will get data from info.json file afterward")
 
-			# If no name is present, use TEMP
+			# Use name if there happens to be one that is present with atime being null
 			if row['name']:
 				dname,fname = db.format_v_names(row['dname'], row['name'], alias, row['ytid'])
+				# Have to escape the percent signs
+				fname = fname.replace('%', '%%')
 			else:
+				# If no name is present, use TEMP
 				dname,fname = db.format_v_names(row['dname'], 'TEMP', alias, row['ytid'])
 
 			# Make subdir if it doesn't exist
@@ -795,16 +798,27 @@ def download_videos(d, filt, ignore_old):
 				'utime': utime,
 			}
 
-			d.begin()
-			n = _now()
-			d.v.update({"rowid": row['rowid']}, dat)
-			d.commit()
+			# Rename TEMP files
+			if not row['name']:
+				fs = glob.glob("%s/*%s*" % (dname, ytid))
+				for f in fs:
+					# Split up by the YTID: everything before is trashed, and file suffix is preserved
+					parts = f.rsplit(ytid, 1)
 
+					# Rebuild file name with preferred name, YTID, and the original suffix
+					dest = "%s/%s-%s%s" % (dname, name, ytid, parts[1])
+
+					os.rename(f, dest)
+					print("\t\t%s -> %s" % (f, dest))
+
+		# Name was present so just download
 		else:
 			if row['name'] is None:
 				raise ValueError("Expected name to be set for ytid '%s'" % row['name'])
 
+			# Format name
 			dname,fname = db.format_v_names(row['dname'], row['name'], alias, row['ytid'])
+			# Have to escape the percent signs
 			fname = fname.replace('%', '%%')
 
 			# Make subdir if it doesn't exist
@@ -821,9 +835,14 @@ def download_videos(d, filt, ignore_old):
 				# Skip errors, and keep downloading
 				continue
 
-			d.begin()
-			d.v.update({"rowid": row['rowid']}, {'name': row['name'], 'utime': _now()})
-			d.commit()
+			dat = {
+				'utime': _now()
+			}
+
+		# Update data
+		d.begin()
+		d.v.update({"rowid": row['rowid']}, dat)
+		d.commit()
 
 
 def _main():
