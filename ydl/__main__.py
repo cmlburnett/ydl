@@ -960,6 +960,8 @@ def _main_manual(args, d):
 
 			# Find anything with the matching YTID and rename it
 			fs = glob.glob("%s/*%s*" % (dname, ytid))
+			fs2 = glob.glob("%s/.*%s*" % (dname, ytid))
+			fs = fs + fs2
 			for f in fs:
 				# Split up by the YTID: everything before is trashed, and file suffix is preserved
 				parts = f.rsplit(ytid, 1)
@@ -1748,13 +1750,17 @@ def _main_updatenames(args, d):
 		# Change into the dir
 		os.chdir(basedir + '/' + dname)
 
-		# Find everything with that YTID
-		fs = glob.glob("*-%s*" % ytid)
+		# Find everything with that YTID (glob ignores dot files)
+		fs = glob.glob("*%s*" % ytid)
+		fs2= glob.glob(".*%s*" % ytid)
+		fs = fs + fs2
+
 		for f in fs:
 			parts = f.rsplit(ytid, 1)
+			subparts = parts[1].rsplit('.', 1)
 
 			# Rename to new name
-			dest = "%s-%s%s" % (name, ytid, parts[1])
+			dest = "%s-%s.%s" % (name, ytid, subparts[1])
 
 			if f == dest:
 				summary['same'].append(ytid)
