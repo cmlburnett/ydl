@@ -1281,7 +1281,8 @@ def _main_add(args, d):
 			else:
 				print("\tNot found")
 				d.add_user(u[1])
-				os.mkdir(u[1])
+				if not os.path.exists(u[1]):
+					os.mkdir(u[1])
 				print("\tAdded")
 
 		elif u[0] == 'p':
@@ -1291,7 +1292,8 @@ def _main_add(args, d):
 			else:
 				print("\tNot found")
 				d.add_playlist(u[1])
-				os.mkdir(u[1])
+				if not os.path.exists(u[1]):
+					os.mkdir(u[1])
 				print("\tAdded")
 
 		elif u[0] == 'c':
@@ -1311,7 +1313,8 @@ def _main_add(args, d):
 			else:
 				print("\tNot found")
 				d.add_channel_unnamed(u[1])
-				os.mkdir(u[1])
+				if not os.path.exists(u[1]):
+					os.mkdir(u[1])
 				print("\tAdded")
 
 		else:
