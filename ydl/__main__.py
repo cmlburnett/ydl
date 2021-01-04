@@ -295,6 +295,12 @@ def _rename_files(dname, ytid, newname):
 				suffix = '_2.' + last[1]
 			elif last[0].endswith('_3'):
 				suffix = '_3.' + last[1]
+			elif last[0].endswith('_4'):
+				suffix = '_4.' + last[1]
+			elif last[0].endswith('_5'):
+				suffix = '_5.' + last[1]
+			elif last[0].endswith('info.json'):
+				suffix = '.info.json'
 			else:
 				suffix = '.' + last[1]
 
