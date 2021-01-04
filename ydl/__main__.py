@@ -19,6 +19,7 @@ from sqlitehelper import SH, DBTable, DBCol, DBColROWID
 from .util import RSSHelper
 from .util import sec_str
 from .util import list_to_quoted_csv, bytes_to_str
+from .util import ytid_hash, ytid_hash_remap
 
 def _now():
 	""" Now """
@@ -1066,7 +1067,26 @@ def _main_manual(args, d):
 		d.commit()
 		sys.exit()
 
+	if False:
+		# Test hashing
+		hist = {}
+		r = 16
+		for i in range(r):
+			hist[i] = 0
 
+		res = d.v.select('ytid')
+		for row in res:
+			a = ytid_hash(row['ytid'], r)
+			# Just call to make sure it doesn't error
+			b = ytid_hash_remap(row['ytid'], r, r+1)
+			hist[a] += 1
+
+		avg = sum(hist.values()) // r
+		print(hist)
+		print([sum(hist.values()), avg])
+		print([_ - avg for _ in hist.values()])
+
+		sys.exit()
 
 def _main_showpath(args, d):
 	"""

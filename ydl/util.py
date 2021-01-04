@@ -1,4 +1,5 @@
 # System
+import hashlib
 import html.parser
 import xml.etree.ElementTree as ET
 
@@ -191,4 +192,66 @@ def bytes_to_str(v, base2=True):
 		elif k > 0: return "%.3f KB" % k
 		else:
 			return "%d B" % v
+
+def ytid_hash(v, r):
+	"""
+	Take the SHA256 hash of the YTID @v, use hash as an integer, then modulus against @r.
+	This should equally distribute a sufficiently large collection of YTID's across @r buckets.
+	And for the same (YTID, r) pair, the value should be identical for forever.
+	"""
+
+	if type(v) is not str:
+		raise TypeError("Expected first argument to be a string, got %s" % type(v))
+	if type(r) is not int:
+		raise TypeError("Expected second argument to be an int, got %s" % type(r))
+	if r < 1:
+		raise ValueError("Expected modulus to be positive number, got %s" % r)
+
+	m = hashlib.sha256()
+	# Can only hash binary values, so make it ASCII
+	m.update(v.encode('ascii'))
+	# Gets a string of hex characters
+	h = m.hexdigest()
+
+	# Convert to an integer (base 16) then modulus
+	return int(h,16) % r
+
+def ytid_hash_remap(v, r_old, r_new):
+	"""
+	Remapping YTID from @r_old to @r_new.
+	Use this to determine of the YTID @v is changing buckets with change in modulus.
+	This is useful if the number of buckets is determined by number of total items,
+	 this will permit easier determination if the files need to move locations.
+
+	Returned is a tuple of (old modulus, new modulus, boolean indicating if different).
+	The third item saves the inevitable comparison in dermining if to move or not:
+	 if True, then bucket has changed; if False, then bucket is identical.
+
+	For example, if the hash were 20 and # of buckets were changing from 4 to 5, the bucket
+	 is zero each time, so ret[2] is False. No bucket change.
+	Non-trivial modulus changes *can* result in non-movement of items in buckets.
+
+	In short, calling this function should be faster as the hash is computed only once.
+	"""
+
+	if type(v) is not str:
+		raise TypeError("Expected first argument to be a string, got %s" % type(v))
+	if type(r_old) is not int:
+		raise TypeError("Expected second argument to be an int, got %s" % type(r_old))
+	if type(r_new) is not int:
+		raise TypeError("Expected third argument to be an int, got %s" % type(r_new))
+	if r_old < 1:
+		raise ValueError("Expected modulus to be positive number for second argument, got %s" % r_old)
+	if r_new < 1:
+		raise ValueError("Expected modulus to be positive number for third argument, got %s" % r_new)
+
+	m = hashlib.sha256()
+	m.update(v.encode('ascii'))
+	h = m.hexdigest()
+
+	x = int(h,16)
+
+	z = (x % r_old, x % r_new)
+
+	return (z[0], z[1], z[0] == z[1])
 
