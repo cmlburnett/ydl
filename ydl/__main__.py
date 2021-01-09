@@ -6,6 +6,7 @@ import glob
 import json
 import logging
 import os
+import stat
 import sys
 import traceback
 import urllib
@@ -20,6 +21,7 @@ from .util import RSSHelper
 from .util import sec_str
 from .util import list_to_quoted_csv, bytes_to_str
 from .util import ytid_hash, ytid_hash_remap
+from .util import ydl_fuse
 
 def _now():
 	""" Now """
@@ -111,7 +113,7 @@ class db(SH):
 			DBCol('atime', 'datetime'), # Last time the RSS feed was sync'ed
 		),
 	]
-	def open(self):
+	def open(self, rowfactory=None):
 		ex = os.path.exists(self.Filename)
 
 		super().open()
@@ -119,6 +121,8 @@ class db(SH):
 		if not ex:
 			self.MakeDatabaseSchema()
 
+	def reopen(self):
+		super().reopen()
 
 	def get_user(self, name):
 		return self.u.select_one("*", "`name`=?", [name])
@@ -517,7 +521,6 @@ def __sync_list(args, d, d_sub, rows, f_get_list, summary):
 				ret = RSSHelper.ParseRSS_YouTube(url)
 				if ret:
 					present = []
-					logging.basicConfig(level=logging.DEBUG)
 
 					# Save list of new YTID's
 					new = ret['ytids']
@@ -943,6 +946,10 @@ def _main():
 	p.add_argument('--ignore-old', action='store_true', default=False, help="Ignore old list items and old videos")
 	p.add_argument('--download', nargs='*', default=False, help="Download video")
 	p.add_argument('--update-names', nargs='*', default=False, help="Check and update file names to match v.name values (needed if title changed on YouTube after download)")
+
+	p.add_argument('--fuse', nargs=1, help="Initiate FUSE file system fronted by the specified database, provide path to mount to")
+	p.add_argument('--fuse-absolute', action='store_true', default=False, help="Sym links are relative by default, pass this to make them absolute paths")
+
 	args = p.parse_args()
 
 	if args.debug == 'debug':		logging.basicConfig(level=logging.DEBUG)
@@ -953,11 +960,14 @@ def _main():
 	else:
 		raise ValueError("Unrecognized logging level '%s'" % args.debug)
 
-	d = db(args.file)
+	d = db(os.getcwd() + '/' + args.file)
 	d.open()
 
 	_main_manual(args, d)
 
+	if args.fuse:
+		_main_fuse(args, d, args.fuse_absolute)
+		sys.exit()
 	if type(args.showpath) is list:
 		_main_showpath(args, d)
 
@@ -1087,6 +1097,40 @@ def _main_manual(args, d):
 		print([_ - avg for _ in hist.values()])
 
 		sys.exit()
+
+def _main_fuse(args, d, absolutepath):
+	# Get mount point
+	mnt = args.fuse[0]
+
+	# Absolute path it
+	mnt = os.path.abspath(mnt)
+
+
+	# Determine what to prepend to the symlink paths
+	if absolutepath:
+		rootbase = os.path.abspath( os.path.dirname(d.Filename) )
+	else:
+		# Get absolute path of the YDL database
+		fpath = os.path.abspath(args.file)
+		# Get the directory that file is in
+		fpath = os.path.dirname(fpath)
+
+		# Get the absolute path of the mount point
+		root = os.path.abspath(args.fuse[0])
+
+		# Get the relative path from the
+		rootbase = os.path.relpath(fpath, root)
+
+	if not os.path.exists(mnt):
+		print("Path %s does not exist" % mnt)
+		sys.exit(-1)
+
+	s = os.stat(mnt)
+	if not stat.S_ISDIR(s.st_mode):
+		print("Path %s is not a directory" % mnt)
+		sys.exit(-1)
+
+	ydl_fuse(d, mnt, rootbase)
 
 def _main_showpath(args, d):
 	"""

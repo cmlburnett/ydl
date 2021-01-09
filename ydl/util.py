@@ -1,10 +1,15 @@
 # System
+import errno
 import hashlib
 import html.parser
+import os
+import stat
+import threading
 import xml.etree.ElementTree as ET
 
 # Installed
 import requests
+import fuse
 
 
 def sec_str(sec):
@@ -254,4 +259,364 @@ def ytid_hash_remap(v, r_old, r_new):
 	z = (x % r_old, x % r_new)
 
 	return (z[0], z[1], z[0] == z[1])
+
+def ydl_fuse(d, root, rootbase, foreground=True, allow_other=False):
+	"""
+	Invoke fuse.py to create a mount point backed by the YDL database.
+	This symlinks each video to the actual data file.
+	The point of this is to permit mapping of lists to the data files without manipulating the raw data files.
+	For example, playlists could include the index in the playlist and thus allow
+	 an ordered viewing of the playlist. If, for example, it was formatted for the playlist to
+	 appear as a TV series (eg, "{channel} - s1e{index} - {name}") then an app like Plex could
+	 pick up and show the YouTube playlist as a series of episodes like a TV show.
+
+	As this is a virtual overlay over the raw data, no actual manipulation to the data is done and would
+	 thus permit representing the exact same data in multiple ways simultaneously.
+	"""
+
+	fuse.FUSE(_ydl_fuse(d, rootbase), root, nothreads=True, foreground=foreground, allow_other=allow_other)
+
+class _ydl_fuse(fuse.LoggingMixIn, fuse.Operations):
+	"""
+	Class that implements the FUSE file system functionality.
+	"""
+
+	def __init__(self, d, rootbase):
+		"""
+		@d is the instance of db class in __main__ that accesses ydl.db.
+		@rootbase is the root base to prepend to all sym links that goes from the
+		 displayed file to the actual datafile. It is calculated externally from
+		 the location of ydl.db and the mount point and passed into this class.
+		"""
+
+		self._db = d
+		self._root = os.path.dirname(d.Filename)
+		self._rootbase = rootbase
+		self._lock = threading.Lock()
+
+		# If set to True, directory listings will be slower
+		self._set_accurate_stat_times = False
+
+		# Format of file names of videos
+		#self._fileformat = '{ctime}-{name}-{ytid}.mkv'
+		self._fileformat = '{name}-{ytid}.mkv'
+		# WARNING: readlink() currently assumes the path ends with YTID.SUFFIX
+		# if you use the slow method and that the YTID is 11 characters long
+		# So if you change the format and break this expectation, the links won't work
+
+	# Root directory of the YDL library in which the database and video files reside
+	@property
+	def root(self): return self._root
+
+	# Lock probably isn't needed since it's read only?
+	@property
+	def lock(self): return self._lock
+
+	def access(self, path, mode):
+		# Read only
+		if mode | os.W_OK:
+			return False
+		else:
+			return True
+
+	# Can't change mode or owner
+	def chmod(self, path, mode):
+		raise fuse.FuseOSError(errno.EACCES)
+	def chown(self, path, mode):
+		raise fuse.FuseOSError(errno.EACCES)
+
+	def getattr(self, path, fh):
+		"""Get stat() attributes"""
+		dirperm = stat.S_IFDIR   | stat.S_IRUSR | stat.S_IRGRP | stat.S_IROTH   | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH
+		lnkperm = stat.S_IFLNK   | stat.S_IRUSR | stat.S_IRGRP | stat.S_IROTH
+
+		s = os.lstat(os.path.dirname(self._db.Filename))
+		if path == '/':
+			return {
+				'st_atime': s.st_atime,
+				'st_ctime': s.st_ctime,
+				'st_mtime': s.st_mtime,
+
+				'st_gid': s.st_gid,
+				'st_uid': s.st_uid,
+				'st_mode': dirperm,
+				'st_nlink': s.st_nlink,
+				'st_size': s.st_size,
+			}
+		elif path in ('/c', '/ch', '/u', '/pl'):
+			if path == '/c':
+				sz = self._db.c.num_rows()
+			elif path == '/ch':
+				sz = self._db.ch.num_rows()
+			elif path == '/u':
+				sz = self._db.u.num_rows()
+			elif path == '/pl':
+				sz = self._db.pl.num_rows()
+			else:
+				raise NotImplementedError
+
+			return {
+				'st_atime': s.st_atime,
+				'st_ctime': s.st_ctime,
+				'st_mtime': s.st_mtime,
+
+				'st_gid': s.st_gid,
+				'st_uid': s.st_uid,
+				'st_mode': dirperm,
+				'st_nlink': 1,
+				'st_size': sz,
+			}
+
+		# List channel directories
+		elif path.startswith('/c/') or path.startswith('/ch/') or path.startswith('/u/') or path.startswith('/pl/'):
+			parts = path.split('/')
+
+			if len(parts) == 3:
+				sz = self._db.v.num_rows('`dname`=? and `utime` is not null', [parts[-1]])
+
+				return {
+					'st_atime': s.st_atime,
+					'st_ctime': s.st_ctime,
+					'st_mtime': s.st_mtime,
+
+					'st_gid': s.st_gid,
+					'st_uid': s.st_uid,
+					'st_mode': dirperm,
+					'st_nlink': 1,
+					'st_size': sz,
+				}
+			elif len(parts) == 4:
+				chan = parts[-2]
+				fname = parts[-1]
+				fnameroot = os.path.splitext(fname)[0]
+
+				ytid = fnameroot[-11:]
+
+				# Assume basic times from the database file itself
+				atime = s.st_atime
+				ctime = s.st_ctime
+				mtime = s.st_mtime
+
+				# If desired to show accurate times, this will slow down directory
+				# listings significantly as one directory listing will require
+				# a separate query per file
+				# (or cache these things)
+				if self._set_accurate_stat_times:
+					# If video has data, then use that instead
+					row = self._db.v.select_one(['ptime','ctime','atime','utime'], '`ytid`=?', [ytid])
+					if row:
+						ctime = row['ptime'].timestamp()
+						atime = row['utime'].timestamp()
+						mtime = row['atime'].timestamp()
+
+
+				if self._rootbase.startswith('..'):
+					r = '../../' + self._rootbase
+				else:
+					r = self._rootbase
+
+				# This is a fixed format
+				p = r + '/{channel}/{fname}'.format(channel=chan, fname=fname)
+
+				return {
+					'st_atime': atime,
+					'st_ctime': ctime,
+					'st_mtime': mtime,
+
+					'st_gid': s.st_gid,
+					'st_uid': s.st_uid,
+					'st_mode': lnkperm,
+					'st_nlink': 1,
+					'st_size': len(p),
+				}
+
+			else:
+				raise fuse.FuseOSError(errno.EACCES)
+
+		else:
+			raise fuse.FuseOSError(errno.EACCES)
+
+
+	def readdir(self, path, fh):
+		"""
+		Read the contents of the directory in @path.
+		If of the root, it lists the various channel types.
+		If of a channel type, then all the names of the channels of that time.
+		If of a specific channel, then all the videos currently downloaded from that channel.
+		"""
+
+		if path == '/':
+			return ['.', '..', 'c', 'ch', 'u', 'pl']
+
+		# List names of each type of list
+		elif path == '/c':
+			ret = ['.', '..']
+
+			ret += [_['name'] for _ in self._db.c.select('name')]
+
+			return ret
+		elif path == '/ch':
+			ret = ['.', '..']
+
+			ret += [_['alias'] or _['name'] for _ in self._db.ch.select(['name','alias'])]
+
+			return ret
+		elif path == '/u':
+			ret = ['.', '..']
+
+			ret += [_['name'] for _ in self._db.u.select('name')]
+
+			return ret
+		elif path == '/pl':
+			ret = ['.', '..']
+
+			ret += [_['ytid'] for _ in self._db.pl.select('ytid')]
+
+			return ret
+
+		# Read video contents of each list
+		elif path.startswith('/c/') or path.startswith('/ch/') or path.startswith('/u/') or path.startswith('/pl/'):
+			ret = ['.', '..']
+
+			parts = path.split('/')
+
+			res = self._db.v.select(['ytid','name','ptime'], '`dname`=? and `utime` is not null', [parts[2]])
+			ytids = {_['ytid']:dict(_) for _ in res}
+			for d in ytids.values():
+				d['ctime'] = d['ptime'].strftime('%Y-%m-%d')
+				del d['ptime']
+
+			res = self._db.vnames.select(['name','ytid'], '`ytid` in (%s)' % list_to_quoted_csv(ytids.keys()))
+			for _ in res:
+				# Update the name
+				ytids[ _['ytid'] ]['name'] = _['name']
+
+			# Make file names
+			for d in ytids.values():
+				_ = self._fileformat.format(**d)
+				ret.append(_)
+
+			return ret
+
+		else:
+			return ['.', '..']
+
+	def readlink(self, path):
+		"""
+		Read the contents of the video symlink that returns the path
+		 to the actual data file.
+		"""
+
+		# Shortcut if True
+		if True:
+			# '/c/foo/bar-YTID.mkv' -> ['', 'c', 'foo', 'bar-YTID.mkv']
+			parts = path.split('/')
+			# 'foo'
+			chan = parts[-2]
+			# 'bar-YTID.mkv'
+			fname = parts[-1]
+
+			if self._rootbase.startswith('..'):
+				r = '../../' + self._rootbase
+			else:
+				r = self._rootbase
+
+			# This is a fixed format
+			return r + '/' + chan + '/' + fname
+
+		# Full parsing, if needed then set to False above
+		else:
+			# '/c/foo/bar-YTID.mkv' -> ['', 'c', 'foo', 'bar-YTID.mkv']
+			parts = path.split('/')
+			# 'foo'
+			chan = parts[-2]
+			# 'bar-YTID.mkv'
+			fname = parts[-1]
+			# 'bar-YTID'
+			fnameroot = os.path.splitext(fname)[0]
+			# 'YTID'
+			ytid = fnameroot[-11:]
+
+			# Get the name as it's not necessarily te rest of the fname value
+			r = self._db.v.select_one('name', '`ytid`=?', [ytid])
+			name = r['name']
+
+			alias = self._db.vnames.select_one('name', '`ytid`=?', [ytid])
+			if alias:
+				name = alias['name']
+
+			if self._rootbase.startswith('..'):
+				r = '../../' + self._rootbase
+			else:
+				r = self._rootbase
+
+			# This is a fixed format in the actual data files of name-ytid.mkv
+			return r + '/{channel}/{name}-{ytid}.mkv'.format(channel=chan, name=name, ytid=ytid)
+
+	# Cannot do any of this
+	def mknod(self, path, mode, dev):
+		raise fuse.FuseOSError(errno.EACCES)
+	def rmdir(self, path):
+		raise fuse.FuseOSError(errno.EACCES)
+
+	# Consider permitting this function that then adds that particular channel to the database
+	def mkdir(self, path, mode):
+		raise fuse.FuseOSError(errno.EACCES)
+
+	def statfs(self, path):
+		# These numbers don't really have any meaning since there's no writing
+		# and it exists purely virtual
+		return {
+			'f_bavail': 0,
+			'f_bfree': 0,
+			'f_blocks': 1024,
+			'f_bsize': 4096,
+			'f_favail': 0,
+			'f_ffree': 0,
+			'f_files': 1024,
+			'f_flag': os.ST_RDONLY,
+			'f_frsize': 1024,
+			'f_namemax': 256,
+		}
+
+	# Can't do any of this
+	def unlink(self, path):
+		raise fuse.FuseOSError(errno.EACCES)
+
+	def symlink(self, name, target):
+		raise fuse.FuseOSError(errno.EACCES)
+
+	def rename(self, old, new):
+		raise fuse.FuseOSError(errno.EACCES)
+
+	def link(self, target, name):
+		raise fuse.FuseOSError(errno.EACCES)
+
+	# TODO: consider permitting this function to trigger a --sync-list and/or --sync-videos and/or --download
+	# No facility currently exists to pass this kind of message anywhere as ydl isn't ran as a daemon
+	def utimens(self, path, times=None):
+		raise fuse.FuseOSError(errno.EACCES)
+
+	# No file operations are permitted as its all sym links elsewhere
+	# TODO: permit special files that allow editing of things in the database
+	def open(self, path, flags):
+		raise fuse.FuseOSError(errno.EACCES)
+
+	def create(self, path, mode, fi=None):
+		raise fuse.FuseOSError(errno.EACCES)
+
+	def read(self, path, length, offset, fh):
+		raise fuse.FuseOSError(errno.EACCES)
+
+	def write(self, path, buf, offset, fh):
+		raise fuse.FuseOSError(errno.EACCES)
+
+	def truncate(self, path, length, fh=None):
+		raise fuse.FuseOSError(errno.EACCES)
+
+	def flush(self, path, fh):
+		raise fuse.FuseOSError(errno.EACCES)
+
+	def fsync(self, path, fdatasync, fh):
+		raise fuse.FuseOSError(errno.EACCES)
 
