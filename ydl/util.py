@@ -343,6 +343,135 @@ class _ydl_fuse(fuse.LoggingMixIn, fuse.Operations):
 				'st_nlink': s.st_nlink,
 				'st_size': s.st_size,
 			}
+
+		elif path == '/v':
+			sz = len(['date_publish', 'date_download'])
+
+			return {
+				'st_atime': s.st_atime,
+				'st_ctime': s.st_ctime,
+				'st_mtime': s.st_mtime,
+
+				'st_gid': s.st_gid,
+				'st_uid': s.st_uid,
+				'st_mode': dirperm,
+				'st_nlink': 1,
+				'st_size': sz,
+			}
+		elif path.startswith('/v/date_publish') or path.startswith('/v/date_download'):
+			if path.startswith('/v/date_publish'):
+				col = 'ptime'
+			else:
+				col = 'utime'
+
+
+			# '/v/date_publish/2020/11/28/NAME-YTID.mkv' -> ['', 'v', 'date_publish', '2020', '11', '28', 'NAME-YTID.mkv']
+			parts = path.split('/')
+
+			# '/v/date_publish/2020/' -> ['', 'v', 'date_publish', '2020']
+			if len(parts) == 3:
+				res = self._db.execute("select strftime('%%Y', `%s`) as year from v where utime is not null group by year" % col)
+				rows = [_['year'] for _ in res]
+				sz = len(rows)
+
+				return {
+					'st_atime': s.st_atime,
+					'st_ctime': s.st_ctime,
+					'st_mtime': s.st_mtime,
+
+					'st_gid': s.st_gid,
+					'st_uid': s.st_uid,
+					'st_mode': dirperm,
+					'st_nlink': 1,
+					'st_size': sz,
+				}
+			elif len(parts) == 4:
+				# Properties on each year
+				res = self._db.v.select('ytid', 'strftime("%%Y", `%s`)=? and `utime` is not null' % col, [parts[3]])
+				rows = [_['ytid'] for _ in res]
+				sz = len(rows)
+
+				return {
+					'st_atime': s.st_atime,
+					'st_ctime': s.st_ctime,
+					'st_mtime': s.st_mtime,
+
+					'st_gid': s.st_gid,
+					'st_uid': s.st_uid,
+					'st_mode': dirperm,
+					'st_nlink': 1,
+					'st_size': sz,
+				}
+
+			# '/v/date_publish/2020/11/' -> ['', 'v', 'date_publish', '2020', '11']
+			elif len(parts) == 5:
+				# Properties on each year/month
+				res = self._db.v.select('ytid', 'strftime("%%Y-%%m", `%s`)=? and `utime` is not null' % col, [parts[3] + '-' + parts[4]])
+				rows = [_['ytid'] for _ in res]
+				sz = len(rows)
+				return {
+					'st_atime': s.st_atime,
+					'st_ctime': s.st_ctime,
+					'st_mtime': s.st_mtime,
+
+					'st_gid': s.st_gid,
+					'st_uid': s.st_uid,
+					'st_mode': dirperm,
+					'st_nlink': 1,
+					'st_size': sz,
+				}
+
+			# '/v/date_publish/2020/11/28/' -> ['', 'v', 'date_publish', '2020', '11', '28']
+			elif len(parts) == 6:
+				# Properties on each year/month/day
+				res = self._db.v.select('ytid', 'strftime("%%Y-%%m-%%d", `%s`)=? and `utime` is not null' % col, [parts[3] + '-' + parts[4] + '-' + parts[5]])
+				rows = [_['ytid'] for _ in res]
+				sz = len(rows)
+				return {
+					'st_atime': s.st_atime,
+					'st_ctime': s.st_ctime,
+					'st_mtime': s.st_mtime,
+
+					'st_gid': s.st_gid,
+					'st_uid': s.st_uid,
+					'st_mode': dirperm,
+					'st_nlink': 1,
+					'st_size': sz,
+				}
+
+			# '/v/date_publish/2020/11/28/NAME-YTID.mkv' -> ['', 'v', 'date_publish', '2020', '11', '28', 'NAME-YTID.mkv']
+			elif len(parts) == 7:
+				fname = parts[-1]
+				fnameroot = os.path.splitext(fname)[0]
+				subparts = fnameroot.split('-', 1)
+				ytid = fnameroot[-11:]
+
+				row = self._db.v.select_one(['dname','name','ytid'], '`ytid`=?', [ytid])
+				row = dict(row)
+
+				alias = self._db.vnames.select_one('name', '`ytid`=?', [subparts[-1]])
+				if alias:
+					row['name'] = alias['name']
+
+				if self._rootbase.startswith('..'):
+					r = '../../' + self._rootbase
+				else:
+					r = self._rootbase
+
+				nm = r + '/{dname}/{name}-{ytid}.mkv'.format(**row)
+
+				return {
+					'st_atime': s.st_atime,
+					'st_ctime': s.st_ctime,
+					'st_mtime': s.st_mtime,
+
+					'st_gid': s.st_gid,
+					'st_uid': s.st_uid,
+					'st_mode': lnkperm,
+					'st_nlink': 1,
+					'st_size': len(nm),
+				}
+
 		elif path in ('/c', '/ch', '/u', '/pl'):
 			if path == '/c':
 				sz = self._db.c.num_rows()
@@ -446,7 +575,7 @@ class _ydl_fuse(fuse.LoggingMixIn, fuse.Operations):
 		"""
 
 		if path == '/':
-			return ['.', '..', 'c', 'ch', 'u', 'pl']
+			return ['.', '..', 'c', 'ch', 'u', 'pl', 'v']
 
 		# List names of each type of list
 		elif path == '/c':
@@ -498,6 +627,62 @@ class _ydl_fuse(fuse.LoggingMixIn, fuse.Operations):
 
 			return ret
 
+
+		# Videos
+		elif path == '/v':
+			# byytid
+			return ['.', '..', 'date_publish', 'date_download', 'ytid']
+
+		elif path.startswith('/v/ytid'):
+			parts = path.split('/')
+
+			if len(parts) == 3:
+				return ['.', '..'] + list('abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ-_')
+
+		elif path.startswith('/v/date_publish') or path.startswith('/v/date_download'):
+			if path.startswith('/v/date_publish'):
+				col = 'ptime'
+			else:
+				col = 'utime'
+
+			ret = ['.', '..']
+
+			# '/v/date_publish/2020/11/28/NAME-YTID.mkv' -> ['', 'v', 'date_publish', '2020', '11', '28', 'NAME-YTID.mkv']
+			parts = path.split('/')
+
+			# List the years
+			if len(parts) == 3:
+				# byytid
+				ret = ['.', '..']
+
+				res = self._db.execute("select strftime('%%Y', `%s`) as year from v where utime is not null group by year" % col)
+				ret += [_['year'] for _ in res]
+
+				return ret
+
+			# List the months
+			elif len(parts) == 4:
+				res = self._db.execute("select strftime('%%m', `%s`) as month from v where strftime('%%Y', `ptime`)=? and `utime` is not null group by month" % col, (parts[3],))
+				ret += [_['month'] for _ in res]
+
+			# List the days
+			elif len(parts) == 5:
+				res = self._db.execute("select strftime('%%d', `%s`) as day from v where strftime('%%Y-%%m', `ptime`)=? and `utime` is not null group by day" % col, (parts[3] + '-' + parts[4],))
+				ret += [_['day'] for _ in res]
+
+			# List the videos
+			elif len(parts) == 6:
+				res = self._db.v.select(['dname', 'name','ytid'], 'strftime("%%Y-%%m-%%d", `%s`)=? and `utime` is not null' % col, ['-'.join(parts[3:6])])
+				ret += [_['dname'] + '-' + _['name'] + '-' + _['ytid'] + '.mkv' for _ in res]
+
+			return ret
+
+		elif path == '/v/date_download':
+			# byytid
+			ret = ['.', '..']
+
+			return ret
+
 		else:
 			return ['.', '..']
 
@@ -509,20 +694,32 @@ class _ydl_fuse(fuse.LoggingMixIn, fuse.Operations):
 
 		# Shortcut if True
 		if True:
-			# '/c/foo/bar-YTID.mkv' -> ['', 'c', 'foo', 'bar-YTID.mkv']
-			parts = path.split('/')
-			# 'foo'
-			chan = parts[-2]
-			# 'bar-YTID.mkv'
-			fname = parts[-1]
-
 			if self._rootbase.startswith('..'):
 				r = '../../' + self._rootbase
 			else:
 				r = self._rootbase
 
-			# This is a fixed format
-			return r + '/' + chan + '/' + fname
+			# '/c/foo/bar-YTID.mkv' -> ['', 'c', 'foo', 'bar-YTID.mkv']
+			parts = path.split('/')
+
+			if parts[1] in ('c', 'ch', 'u', 'pl'):
+				# 'foo'
+				chan = parts[-2]
+				# 'bar-YTID.mkv'
+				fname = parts[-1]
+
+				# This is a fixed format
+				return r + '/' + chan + '/' + fname
+
+			elif parts[1] == 'v':
+				# '/v/2020/11/28/NAME-YTID.mkv' -> ['', 'v', '2020', '11', '28', 'NAME-YTID.mkv']
+
+				fname = parts[-1]
+				fnameroot = os.path.splitext(fname)[0]
+				subparts = fnameroot.split('-')
+
+				return r + '/' + subparts[0] + '/' + subparts[1] + '-' + subparts[2] + '.mkv'
+
 
 		# Full parsing, if needed then set to False above
 		else:
