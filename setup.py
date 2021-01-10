@@ -11,7 +11,7 @@ setup(
 	author_email = "cmlburnett@gmail.com",
 	url = "https://github.com/cmlburnett/ydl",
 	packages = ['ydl'],
-	package_data = {'ydl': ['ydl/__init__.py', 'ydl/__main__.py']},
+	package_data = {'ydl': ['ydl/__init__.py', 'ydl/__main__.py', 'ydl/util.py', 'ydl/fuse.py']},
 	classifiers = [
 		'Programming Language :: Python :: 3.7'
 	]
