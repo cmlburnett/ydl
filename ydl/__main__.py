@@ -21,7 +21,17 @@ from .util import RSSHelper
 from .util import sec_str
 from .util import list_to_quoted_csv, bytes_to_str
 from .util import ytid_hash, ytid_hash_remap
-from .util import ydl_fuse
+
+from .fuse import ydl_fuse
+
+try:
+	import pushover
+except:
+	pushover = None
+
+# Path of configuration file for Pushover
+PUSHOVER_CFG_FILE = "~/.pushoverrc"
+PUSHOVER_CFG_FILE = os.path.expanduser(PUSHOVER_CFG_FILE)
 
 def _now():
 	""" Now """
@@ -835,7 +845,8 @@ def download_videos(d, filt, ignore_old):
 				fname = fname.replace('%', '%%')
 				ydl.download(row['ytid'], fname, dname)
 			except KeyboardInterrupt:
-				break
+				# Didn't complete download
+				return False
 			except:
 				# Print it out to see it
 				traceback.print_exc()
@@ -896,7 +907,8 @@ def download_videos(d, filt, ignore_old):
 			try:
 				ydl.download(row['ytid'], fname, dname)
 			except KeyboardInterrupt:
-				break
+				# Didn't complete download
+				return False
 			except:
 				# Print it out to see it
 				traceback.print_exc()
@@ -912,6 +924,8 @@ def download_videos(d, filt, ignore_old):
 		d.v.update({"rowid": row['rowid']}, dat)
 		d.commit()
 
+	# Completed download
+	return True
 
 def _main():
 	""" Main function called from invoking the library """
@@ -950,6 +964,8 @@ def _main():
 	p.add_argument('--fuse', nargs=1, help="Initiate FUSE file system fronted by the specified database, provide path to mount to")
 	p.add_argument('--fuse-absolute', action='store_true', default=False, help="Sym links are relative by default, pass this to make them absolute paths")
 
+	p.add_argument('--notify', default=False, action='store_true', help="Send a Pushover notification when completed; uses ~/.pushoverrc for config")
+
 	args = p.parse_args()
 
 	if args.debug == 'debug':		logging.basicConfig(level=logging.DEBUG)
@@ -959,6 +975,17 @@ def _main():
 	elif args.debug == 'critical':	logging.basicConfig(level=logging.CRITICAL)
 	else:
 		raise ValueError("Unrecognized logging level '%s'" % args.debug)
+
+	if args.notify:
+		if not os.path.exists(PUSHOVER_CFG_FILE):
+			print("Unable to send notifications because there is no ~/.pushoverrc configuration file")
+			print("Aborting.")
+			sys.exit(-1)
+
+		if pushover is None:
+			print("Unable to send notifications because pushover is not installed: sudo pip3 install pushover")
+			print("Aborting.")
+			sys.exit(-1)
 
 	d = db(os.getcwd() + '/' + args.file)
 	d.open()
@@ -1885,7 +1912,35 @@ def _main_download(args, d):
 		filt = args.download
 
 	print("Download videos")
-	download_videos(d, filt, ignore_old=args.ignore_old)
+	try:
+		ret = download_videos(d, filt, ignore_old=args.ignore_old)
+	except Exception as e:
+		ret = e
+
+	# Send notificaiton via Pushover
+	if args.notify:
+		# Send osmething useful but short
+		msg = ",".join(filt)
+		if len(msg) > 32:
+			msg = msg[:32] + '...'
+
+		if ret == True:
+			msg = "Download completed: %s" % msg
+
+		elif ret == False:
+			msg = "Download aborted: %s" % msg
+
+		elif type(ret) is Exception:
+			errmsg = str(ret)
+			if len(errmsg) > 32:
+				errmsg = errmsg[:32] + '...'
+
+			msg = "Dwonload aborted with exception (%s) for %s" % (errmsg, msg)
+		else:
+			msg = "Download something: %s" % msg
+
+		pushover.Client().send_message(msg, title="ydl")
+		print('notify: %s' % msg)
 
 
 if __name__ == '__main__':
