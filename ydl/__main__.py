@@ -947,7 +947,7 @@ def _main():
 	p.add_argument('--showpath', nargs='*', default=False, help="Show file paths for the given channels or YTID's")
 	p.add_argument('--skip', nargs='*', help="Skip the specified videos (supply no ids to get a list of skipped)")
 	p.add_argument('--unskip', nargs='*', help="Un-skip the specified videos (supply no ids to get a list of not skipped)")
-	p.add_argument('--info', nargs='+', default=False, help="Print out information about the video")
+	p.add_argument('--info', nargs='*', default=False, help="Print out information about the video")
 
 	p.add_argument('--json', action='store_true', default=False, help="Dump output as JSON")
 	p.add_argument('--xml', action='store_true', default=False, help="Dump output as XML")
@@ -1728,8 +1728,46 @@ def _main_alias(args, d):
 		print("Too many variables")
 
 def _main_info(args, d):
-	ytids = args.info
 
+	if not len(args.info):
+		_main_info_db(args, d)
+	else:
+		_main_info_videos(args, d)
+
+def _main_info_db(args, d):
+	print("Database information")
+
+	print("\tFile: %s" % d.Filename)
+
+	print()
+
+	cs = d.c.num_rows()
+	chs = d.ch.num_rows()
+	us = d.u.num_rows()
+	pls = d.pl.num_rows()
+
+	print("\tNamed channels: %d" % cs)
+	print("\tUnnamed channels: %d" % chs)
+	print("\tUsers: %d" % us)
+	print("\tPlaylists: %d" % pls)
+
+	vs = d.v.num_rows()
+	print("\tVideos: %d" % vs)
+	vs = d.v.num_rows('`skip`=1')
+	print("\t\tSkipped: %d" % vs)
+	vs = d.v.num_rows('`utime` is not null')
+	print("\t\tDownloaded: %d" % vs)
+	vs = d.vnames.num_rows()
+	print("\t\tWith preferred names: %d" % vs)
+
+	row = d.execute("select sum(duration) as duration from v").fetchone()
+	days = row['duration'] / (60*60*24.0)
+	print("\t\tTotal duration: %s (%.2f days)" % (sec_str(row['duration']), days))
+
+
+
+def _main_info_videos(args, d):
+	ytids = args.info
 	print("Showing information for videos (%d):" % len(ytids))
 
 	for ytid in ytids:
@@ -1746,6 +1784,11 @@ def _main_info(args, d):
 			rows = [dict(_) for _ in rows]
 			rows = sorted(rows, key=lambda x: x['ytid'])
 
+			row = d.execute("select sum(duration) as duration from v where `dname`=?", (ytid,)).fetchone()
+			days = row['duration'] / (60*60*24.0)
+			print("\t\tTotal duration: %s (%.2f days)" % (sec_str(row['duration']), days))
+			print()
+
 			for row in rows:
 				_main_info_v(args, d, row['ytid'], row)
 
@@ -1759,6 +1802,11 @@ def _main_info(args, d):
 			rows = d.v.select('*', '`dname`=?', [ytid])
 			rows = [dict(_) for _ in rows]
 			rows = sorted(rows, key=lambda x: x['ytid'])
+
+			row = d.execute("select sum(duration) as duration from v where `dname`=?", (ytid,)).fetchone()
+			days = row['duration'] / (60*60*24.0)
+			print("\t\tTotal duration: %s (%.2f days)" % (sec_str(row['duration']), days))
+			print()
 
 			for row in rows:
 				_main_info_v(args, d, row['ytid'], row)
@@ -1774,6 +1822,11 @@ def _main_info(args, d):
 			rows = [dict(_) for _ in rows]
 			rows = sorted(rows, key=lambda x: x['ytid'])
 
+			row = d.execute("select sum(duration) as duration from v where `dname`=?", (ytid,)).fetchone()
+			days = row['duration'] / (60*60*24.0)
+			print("\t\tTotal duration: %s (%.2f days)" % (sec_str(row['duration']), days))
+			print()
+
 			for row in rows:
 				_main_info_v(args, d, row['ytid'], row)
 
@@ -1787,6 +1840,11 @@ def _main_info(args, d):
 			rows = d.v.select('*', '`dname`=?', [ytid])
 			rows = [dict(_) for _ in rows]
 			rows = sorted(rows, key=lambda x: x['ytid'])
+
+			row = d.execute("select sum(duration) as duration from v where `dname`=?", (ytid,)).fetchone()
+			days = row['duration'] / (60*60*24.0)
+			print("\t\tTotal duration: %s (%.2f days)" % (sec_str(row['duration']), days))
+			print()
 
 			for row in rows:
 				_main_info_v(args, d, row['ytid'], row)
