@@ -301,8 +301,12 @@ def _rename_files(dname, ytid, newname):
 			# Get the dot suffix of the file
 			last = parts[-1].rsplit('.', 1)
 
-			# Only the thumbnails break the mold in terms of renaming
-			if last[0].endswith('_0'):
+			# Things that break the mold in terms of renaming
+			if parts[-1] == '.json':
+				suffix = '.info.json'
+			elif parts[-1] == '.info.json':
+				suffix = '.info.json'
+			elif last[0].endswith('_0'):
 				suffix = '_0.' + last[1]
 			elif last[0].endswith('_1'):
 				suffix = '_1.' + last[1]
@@ -314,8 +318,6 @@ def _rename_files(dname, ytid, newname):
 				suffix = '_4.' + last[1]
 			elif last[0].endswith('_5'):
 				suffix = '_5.' + last[1]
-			elif last[0].endswith('info.json'):
-				suffix = '.info.json'
 			else:
 				suffix = '.' + last[1]
 
@@ -1833,7 +1835,7 @@ def _main_info_videos(args, d):
 			# Don't, next @ytids entry
 			continue
 
-		# Check if palylist
+		# Check if playlist
 		row = d.pl.select_one('*', '`ytid`=?', [ytid])
 		if row is not None:
 			print("\tPlaylist %s:" % ytid)
@@ -1842,8 +1844,14 @@ def _main_info_videos(args, d):
 			rows = sorted(rows, key=lambda x: x['ytid'])
 
 			row = d.execute("select sum(duration) as duration from v where `dname`=?", (ytid,)).fetchone()
-			days = row['duration'] / (60*60*24.0)
-			print("\t\tTotal duration: %s (%.2f days)" % (sec_str(row['duration']), days))
+			if row['duration'] is None:
+				duration = 0
+				days = 0.0
+			else:
+				duration = row['duration']
+				days = duration / (60*60*24.0)
+
+			print("\t\tTotal duration: %s (%.2f days)" % (sec_str(duration), days))
 			print()
 
 			for row in rows:
@@ -1946,6 +1954,8 @@ def _main_updatenames(args, d):
 		ytid = row['ytid']
 		dname = row['dname']
 		name = row['name']
+		if name is None:
+			name = 'TEMP'
 
 		# Get preferred name, if one is set
 		sub_row = d.vnames.select_one('name', '`ytid`=?', [ytid])
