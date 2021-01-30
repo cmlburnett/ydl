@@ -1809,11 +1809,12 @@ def _main_info_db(args, d):
 	days = row['duration'] / (60*60*24.0)
 	print("\t\tTotal duration: %s (%.2f days)" % (sec_str(row['duration']), days))
 
-
-
 def _main_info_videos(args, d):
 	ytids = args.info
 	print("Showing information for videos (%d):" % len(ytids))
+
+	# I don't know how to get argparse to ignore YTID's that start with a dash, so instead use = sign and substitute now
+	ytids = ['-' + _[1:] for _ in ytids if _[0] == '='] + [_ for _ in ytids if _[0] != '=']
 
 	for ytid in ytids:
 		row = d.v.select_one('*', '`ytid`=?', [ytid])
@@ -1972,6 +1973,9 @@ def _main_sync_videos(args, d):
 	if type(args.sync) is list:			filt = args.sync
 	if type(args.sync_videos) is list:	filt = args.sync_videos
 
+	# I don't know how to get argparse to ignore YTID's that start with a dash, so instead use = sign and substitute now
+	filt = ['-' + _[1:] for _ in filt if _[0] == '='] + [_ for _ in filt if _[0] != '=']
+
 	print("Sync all videos")
 	sync_videos(d, filt, ignore_old=args.ignore_old)
 
@@ -2021,6 +2025,8 @@ def _main_download(args, d):
 	filt = []
 	if type(args.download) is list and len(args.download):
 		filt = args.download
+		# I don't know how to get argparse to ignore YTID's that start with a dash, so instead use = sign and substitute now
+		filt = ['-' + _[1:] for _ in filt if _[0] == '='] + [_ for _ in filt if _[0] != '=']
 
 	print("Download videos")
 	try:
