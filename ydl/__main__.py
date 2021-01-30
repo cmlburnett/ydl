@@ -1,3 +1,48 @@
+"""
+Invoke this with `python3 -m ydl ARGS`.
+I have an alias set up in bash to simplify calling it:
+		alias ydl='python3 -m ydl'
+It managees a sqlite database of channels and videos.
+The assumed file name is ydl.db in the current working directory.
+	Use -f to specify the file path if not ydl.db.
+
+Common actions:
+	Add a new channel
+		ydl --add https://www.youtube.com/user/MIT
+
+	Update a channel with a complete list of videos (utilizes RSS if available)
+		ydl --sync-list MIT
+
+	Sync only the video information for a channel
+		ydl --sync-videos MIT
+
+	Download all (new and old) videos for a channel
+		ydl --download MIT
+
+	Download only newest videos for a channel
+		ydl --ignore-old --download MIT
+
+	Download only newest videos for a channel and notify by Pushover (configure ~/.pushoverrc first) when done
+		ydl --notify --ignore-old --download MIT
+
+	Download a specific video
+		ydl --download btZ-VFW4wpY
+
+	List all channels
+		ydl --list
+
+	List all channels and their videos
+		ydl --listall
+
+	List all videos for a channel
+		ydl --listall MIT
+
+	Skip a video (don't download every); do this when there's a problem with downloading the video
+		ydl --skip btZ-VFW4wpY
+
+	Un-skip a video
+		ydl --unskip btZ-VFW4wpY
+"""
 
 # System
 import argparse
@@ -12,7 +57,6 @@ import traceback
 import urllib
 
 # Installed
-import sqlite3
 import ydl
 
 from sqlitehelper import SH, DBTable, DBCol, DBColROWID
@@ -1730,7 +1774,6 @@ def _main_alias(args, d):
 		print("Too many variables")
 
 def _main_info(args, d):
-
 	if not len(args.info):
 		_main_info_db(args, d)
 	else:
