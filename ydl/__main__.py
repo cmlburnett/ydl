@@ -42,6 +42,9 @@ Common actions:
 
 	Un-skip a video
 		ydl --unskip btZ-VFW4wpY
+
+	Mount a FUSE filesystem to list channels and videos
+		ydl --fuse /mnt/ydl
 """
 
 # System
@@ -1203,6 +1206,11 @@ def _main_fuse(args, d, absolutepath):
 		print("Path %s is not a directory" % mnt)
 		sys.exit(-1)
 
+	print("Mounting YDL database as a FUSE filesystem")
+	print("\tDB: %s" % os.path.abspath(args.file))
+	print("\tMount: %s" % os.path.abspath(mnt))
+	print("Enter ctrl-c to quit and unmount")
+	print("Mounting...")
 	ydl_fuse(d, mnt, rootbase)
 
 def _main_showpath(args, d):
