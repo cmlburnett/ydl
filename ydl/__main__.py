@@ -45,6 +45,9 @@ Common actions:
 
 	Mount a FUSE filesystem to list channels and videos
 		ydl --fuse /mnt/ydl
+
+	Mount a FUSE filesystem with sym links use absolute paths
+		ydl --fuse-absolute /mnt/ydl
 """
 
 # System
