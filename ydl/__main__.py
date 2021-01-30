@@ -1842,7 +1842,7 @@ def _main_info_videos(args, d):
 			continue
 
 		# Check if unnamed channel
-		row = d.ch.select_one('*', '`name`=?', [ytid])
+		row = d.ch.select_one('*', '`name`=? or `alias`=?', [ytid,ytid])
 		if row is not None:
 			print("\tUnnamed channel %s:" % ytid)
 			rows = d.v.select('*', '`dname`=?', [ytid])
