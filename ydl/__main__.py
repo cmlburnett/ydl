@@ -2159,6 +2159,7 @@ def _main_merge_playlist(args, d):
 
 			if not os.path.exists(fname_mkv):
 				# Merge videos
+				# NB: this currently transcodes to h265 as the VP9 codec has issues with invisible frames
 				args = ['ffmpeg', '-f', 'concat', '-safe', '0', '-i', fname_list, '-c:v', 'h264', '-c:a', 'copy', fname_mkv]
 				print(" ".join(args))
 				subprocess.run(args)
