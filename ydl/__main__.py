@@ -58,6 +58,7 @@ import json
 import logging
 import os
 import stat
+import subprocess
 import sys
 import traceback
 import urllib
@@ -66,6 +67,7 @@ import urllib
 import ydl
 
 from sqlitehelper import SH, DBTable, DBCol, DBColROWID
+import mkvxmlmaker
 
 from .util import RSSHelper
 from .util import sec_str
@@ -708,9 +710,6 @@ def __sync_list_full(args, d, d_sub, rows, f_get_list, summary, c_name, c_name_a
 		# Continue onward, ignore errors
 		d.rollback()
 
-
-
-
 def sync_videos(d, filt, ignore_old):
 	"""
 	Sync all videos in the database @d and if @ignore_old is True then don't sync
@@ -987,10 +986,6 @@ def _main():
 	p.add_argument('--stdin', action='store_true', default=False, help="Accept input on STDIN for parameters instead of arguments")
 	p.add_argument('--debug', choices=('debug','info','warning','error','critical'), default='error', help="Set logging level")
 
-	p.add_argument('--year', help="Year of video")
-	p.add_argument('--artist', help="Artist of the video")
-	p.add_argument('--title', help="Title of the video")
-
 	p.add_argument('--add', nargs='*', default=False, help="Add URL(s) to download")
 	p.add_argument('--name', nargs='*', default=False, help="Supply a YTID and file name to manually specify it")
 	p.add_argument('--alias', nargs='*', default=False, help="Add an alias for unnamed channels")
@@ -1017,6 +1012,8 @@ def _main():
 	p.add_argument('--fuse-absolute', action='store_true', default=False, help="Sym links are relative by default, pass this to make them absolute paths")
 
 	p.add_argument('--notify', default=False, action='store_true', help="Send a Pushover notification when completed; uses ~/.pushoverrc for config")
+
+	p.add_argument('--merge-playlist', default=False, nargs='+', help="Merge a playlist into a single video file with each video entry as a chapter")
 
 	args = p.parse_args()
 
@@ -1082,6 +1079,9 @@ def _main():
 
 	if args.download is not False:
 		_main_download(args, d)
+
+	if args.merge_playlist is not False:
+		_main_merge_playlist(args, d)
 
 def _main_manual(args, d):
 	"""
@@ -2070,6 +2070,126 @@ def _main_download(args, d):
 		pushover.Client().send_message(msg, title="ydl")
 		print('notify: %s' % msg)
 
+def _main_merge_playlist(args, d):
+	dname = os.path.dirname(d.Filename) + '/MERGED'
+	if not os.path.exists(dname):
+		os.mkdir(dname)
+
+	print("Checking that all provided playlists have been completely downloaded first")
+	print()
+
+	dat = {}
+
+	abort = False
+	for ytid in args.merge_playlist:
+		print(ytid)
+		dat[ytid] = []
+
+		row = d.pl.select_one('*', '`ytid`=?', [ytid])
+		if row is None:
+			print("\tPlaylist %s not found" % ytid)
+			abort = True
+		else:
+			fname = dname + '/' + ytid + '.chapters.mkv'
+			if os.path.exists(fname):
+				print("\tEXISTS, skipping")
+			else:
+				# TODO: suspect there will be an issue with skipped videos, will skip (*snark*) that check for now
+
+				# Total length of playlist in seconds
+				totallen = 0
+
+				res = d.vids.select('*', '`name`=?', [ytid])
+				vids = [dict(_) for _ in res]
+				vids = sorted(vids, key=lambda _: _['idx'])
+
+				cnt = 0
+				for v in vids:
+					row = d.v.select_one(['duration','title'], '`ytid`=?', [v['ytid']])
+
+					path = d.get_v_fname(v['ytid'])
+					exists = os.path.exists(path)
+					if not exists:
+						print("\t%d: %s - DOES NOT EXIST" % (v['idx'], v['ytid']))
+					else:
+						print("\t%d: %s (%s) - EXISTS" % (v['idx'],v['ytid'],  sec_str(row['duration'])))
+						cnt += 1
+
+						dat[ytid].append({'ytid': v['ytid'], 'start': totallen, 'path': path, 'title': row['title']})
+
+						totallen += row['duration']
+
+				print()
+				print("%d of %d exists" % (cnt, len(vids)))
+				if cnt != len(vids):
+					print("Not all videos are downloaded, cannot merge. Do --download first.")
+					abort = True
+				else:
+					print("Expected video length: %s" % sec_str(totallen))
+
+	if abort:
+		sys.exit(-1)
+
+	print()
+	print('-'*80)
+	print("Processing playlists and merging")
+	print()
+
+	for ytid in args.merge_playlist:
+		print(ytid)
+
+		basedir = os.getcwd()
+		try:
+			os.chdir(basedir + '/MERGED')
+			fname_mkv = ytid + '.mkv'
+			fname_list = ytid + '.txt'
+			fname_chaps = ytid + '.chapters.xml'
+			fname_chapsmkv = ytid + '.chapters.mkv'
+
+			if os.path.exists(fname_chapsmkv):
+				print("\tAlready merged, skipping")
+				continue
+
+
+			if not os.path.exists(fname_list):
+				# Write list of videos to merge
+				with open(fname_list, 'w') as f:
+					for v in dat[ytid]:
+						f.write("file '%s'\n" % v['path'])
+
+			if not os.path.exists(fname_mkv):
+				# Merge videos
+				args = ['ffmpeg', '-f', 'concat', '-safe', '0', '-i', fname_list, '-c:v', 'h264', '-c:a', 'copy', fname_mkv]
+				print(" ".join(args))
+				subprocess.run(args)
+
+			if not os.path.exists(fname_chaps):
+				# Create chapters XML
+				cxml = mkvxmlmaker.MKVXML_chapter()
+				for v in dat[ytid]:
+					cxml.AddChapter(sec_str(v['start']), v['title'])
+				cxml.Save(fname_chaps)
+
+			# Add in chapter info
+			args = ['mkvmerge', '-o', fname_chapsmkv, '--chapters', fname_chaps, fname_mkv]
+			print(" ".join(args))
+			subprocess.run(args)
+
+		finally:
+			os.chdir(basedir)
+		print()
+		pass
+
+	print()
+	print("-"*80)
+	print("Final file names")
+	print()
+
+	for ytid in args.merge_playlist:
+		fname_chapsmkv = ytid + '.chapters.mkv'
+
+		print(ytid)
+		print("\tMERGED/%s" % fname_chapsmkv)
 
 if __name__ == '__main__':
 	_main()
