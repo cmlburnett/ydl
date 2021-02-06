@@ -60,6 +60,7 @@ import os
 import stat
 import subprocess
 import sys
+import tempfile
 import traceback
 import urllib
 
@@ -73,6 +74,7 @@ from .util import RSSHelper
 from .util import sec_str
 from .util import list_to_quoted_csv, bytes_to_str
 from .util import ytid_hash, ytid_hash_remap
+from .util import inputopts
 
 from .fuse import ydl_fuse
 
@@ -111,7 +113,10 @@ class db(SH):
 			DBCol('skip', 'bool'),
 
 			# Put long strings at the end
-			DBCol('thumbnails', 'json')
+			DBCol('thumbnails', 'json'),
+
+			# Chapter information, if used, otherwise null
+			DBCol('chapters', 'json'),
 		),
 		# Manually set file names on some as standard ascii translation
 		# may make completely gibberish names
@@ -1015,6 +1020,9 @@ def _main():
 
 	p.add_argument('--merge-playlist', default=False, nargs='+', help="Merge a playlist into a single video file with each video entry as a chapter")
 
+	p.add_argument('--chapter-edit', default=False, nargs=1, help="Edit chapters for the given video file")
+	p.add_argument('--chapterize', default=False, nargs='+', help="Add chapters to a file. Must use --chapter-edit first to provide chapter information, then --chapterize the video.")
+
 	args = p.parse_args()
 
 	if args.debug == 'debug':		logging.basicConfig(level=logging.DEBUG)
@@ -1082,6 +1090,12 @@ def _main():
 
 	if args.merge_playlist is not False:
 		_main_merge_playlist(args, d)
+
+	if args.chapter_edit is not False:
+		_main_chapter_edit(args, d)
+
+	if args.chapterize is not False:
+		_main_chapterize(args, d)
 
 def _main_manual(args, d):
 	"""
@@ -2191,6 +2205,198 @@ def _main_merge_playlist(args, d):
 
 		print(ytid)
 		print("\tMERGED/%s" % fname_chapsmkv)
+
+def _main_chapter_edit(args, d):
+	abort = False
+
+	dat = {}
+
+	print("Checking that videos are present")
+	print()
+
+	for ytid in args.chapter_edit:
+		print(ytid)
+
+		row = d.v.select_one('*', '`ytid`=?', [ytid])
+		if row is None:
+			print("\tNot a recognized video")
+			abort = True
+			continue
+
+		row = dict(row)
+
+		# Get file name
+		fname = d.get_v_fname(ytid)
+		if not os.path.exists(fname):
+			print("\tNot downloaded, use --download to get the video first")
+			abort = True
+			continue
+
+		if row['chapters'] is None:
+			print("\tNo chapter information provided yet")
+		else:
+			print("\tChapter information found")
+
+		# Save data
+		dat[ytid] = dict(row)
+		dat[ytid]['path'] = fname
+
+	if abort:
+		sys.exit(-1)
+
+	print("-"*80)
+	print("Edit chapter information")
+	print()
+
+	for ytid in args.chapter_edit:
+		print("%s - %s" % (ytid, dat[ytid]['title']))
+
+		while True:
+			z = inputopts("\tChapters: (p)rint, (e)dit, (d)escription dump, (C)continue, (q)uit? ")
+			if z == 'p':
+				if dat[ytid]['chapters'] is None:
+					print("\tNo chapter data")
+				else:
+					chaps = dat[ytid]['chapters']
+					maxlen = 0
+					for chap in chaps:
+						maxlen = max(maxlen, len(chap[0]))
+
+					print()
+					for i,chap in enumerate(chaps):
+						print("\t\t%d) %*s -- %s" % (i+1,maxlen, chap[0], chap[1]))
+
+			elif z == 'e':
+				with tempfile.NamedTemporaryFile(mode='w+') as f:
+					f.write("# Chapter information consists of two columns separated by a tab, first column is a time stamp in HH:MM:SS format and the second column is the chapter name.\n")
+					f.write("# Every line with # is discarded.\n")
+					f.write("# Empty lines are ignored\n")
+					f.write("#\n")
+					f.write("# HH:MM:SS			Title\n")
+					f.write("\n")
+
+					if dat[ytid]['chapters'] is not None:
+						chaps = dat[ytid]['chapters']
+						print(['chaps', chaps])
+						for chap in chaps:
+							print(['chap', chap])
+							f.write("%s\t%s\n" % (chap[0],chap[1]))
+					f.seek(0)
+
+					# Edit with vim
+					subprocess.run(['vim', f.name])
+
+					# Read file contents
+					f.seek(0)
+					z = f.read()
+					z = z.split('\n')
+					z = [_ for _ in z if len(_) != 0]
+					z = [_ for _ in z if _[0] != '#']
+
+					y = []
+					for line in z:
+						parts = line.split('\t',1)
+						parts = [_.strip() for _ in parts]
+						y.append(parts)
+
+					d.begin()
+					if not len(y):
+						d.v.update({'ytid': ytid}, {'chapters': None})
+					else:
+						d.v.update({'ytid': ytid}, {'chapters': json.dumps(y)})
+					d.commit()
+					dat[ytid]['chapters'] = y
+
+			elif z == 'd':
+				fname = dat[ytid]['path']
+				iname = os.path.splitext(fname)[0] + '.info.json'
+
+				if os.path.exists(iname):
+					with open(iname) as f:
+						z = f.read()
+					z = json.loads(z)
+					print(z['description'])
+
+			elif z == 'C':
+				break
+			elif z == 'q':
+				sys.exit(0)
+			else:
+				raise ValueError("Unrecognized input: %s" % z)
+			print()
+
+def _main_chapterize(args, d):
+	dname = os.path.dirname(d.Filename) + '/CHAPTERIZED'
+	if not os.path.exists(dname):
+		os.mkdir(dname)
+
+	abort = False
+
+	dat = {}
+
+	print("Checking that videos are present")
+	print()
+
+	for ytid in args.chapterize:
+		print(ytid)
+
+		row = d.v.select_one('*', '`ytid`=?', [ytid])
+		if row is None:
+			print("\tNot a recognized video")
+			abort = True
+			continue
+
+		row = dict(row)
+
+		# Get file name
+		fname = d.get_v_fname(ytid)
+		if not os.path.exists(fname):
+			print("\tNot downloaded, use --download to get the video first")
+			abort = True
+			continue
+
+		fname_chapsmkv = dname + '/' + fname + '.chapters.mkv'
+
+		if os.path.exists(fname_chapsmkv):
+			print("\tAlready chapterized, skipping" % fname_chapsmkv)
+
+		if row['chapters'] is None:
+			print("\tNo chapter information provided yet")
+			abort = True
+
+		# Save data
+		dat[ytid] = dict(row)
+		dat[ytid]['path'] = fname
+
+	if abort:
+		sys.exit(-1)
+
+	print("-"*80)
+	print("Chapterize")
+	print()
+
+	for ytid in args.chapterize:
+		print("%s -- %s" % (ytid, dat[ytid]['title']))
+
+		fname = dat[ytid]['path']
+		fname_chaps = dname + '/%s.chapters.xml' % ytid
+		fname_chapsmkv = dname + '/%s.chapters.mkv' % ytid
+
+		print(dat[ytid]['chapters'])
+
+		if not os.path.exists(fname_chaps):
+			# Create chapters XML
+			cxml = mkvxmlmaker.MKVXML_chapter()
+			for v in dat[ytid]['chapters']:
+				cxml.AddChapter(v[0], v[1])
+			cxml.Save(fname_chaps)
+
+		# Add in chapter info
+		args = ['mkvmerge', '-o', fname_chapsmkv, '--chapters', fname_chaps, fname]
+		print(" ".join(args))
+		subprocess.run(args)
+
+
 
 if __name__ == '__main__':
 	_main()

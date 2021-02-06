@@ -1,6 +1,7 @@
 # System
 import hashlib
 import html.parser
+import re
 import xml.etree.ElementTree as ET
 
 # Installed
