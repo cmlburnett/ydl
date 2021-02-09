@@ -1834,6 +1834,14 @@ def _main_info_db(args, d):
 	days = row['duration'] / (60*60*24.0)
 	print("\t\tTotal duration: %s (%.2f days)" % (sec_str(row['duration']), days))
 
+	print("Calculating disk space used...")
+
+	args = ['du', '-b', '-s', os.path.dirname(d.Filename)]
+	s = subprocess.run(args, stdout=subprocess.PIPE)
+	line = s.stdout.decode('ascii').split()
+	sz = int(line[0])
+	print("\t%d bytes (%s)" % (sz, bytes_to_str(sz)))
+
 def _main_info_videos(args, d):
 	ytids = args.info
 	print("Showing information for videos (%d):" % len(ytids))
