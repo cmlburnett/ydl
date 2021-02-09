@@ -5,12 +5,17 @@ This would allow a video playing system like Plex to access the downloaded video
 
 # System
 import errno
+import glob
 import os
 import stat
 import threading
 
 # Installed
-import fuse
+try:
+	import fuse
+except:
+	print("No fuse installed")
+	fuse = None
 
 def ydl_fuse(d, root, rootbase, foreground=True, allow_other=False):
 	"""
@@ -25,6 +30,9 @@ def ydl_fuse(d, root, rootbase, foreground=True, allow_other=False):
 	As this is a virtual overlay over the raw data, no actual manipulation to the data is done and would
 	 thus permit representing the exact same data in multiple ways simultaneously.
 	"""
+
+	if fuse is None:
+		raise Exception("Cannot run fuse, it is not installed")
 
 	fuse.FUSE(_ydl_fuse(d, rootbase), root, nothreads=True, foreground=foreground, allow_other=allow_other)
 
