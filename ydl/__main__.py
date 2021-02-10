@@ -2107,7 +2107,7 @@ def _main_download(args, d):
 	try:
 		ret = download_videos(d, filt, ignore_old=args.ignore_old)
 	except Exception as e:
-		ret = e
+		ret = sys.exc_info()
 
 	# Send notificaiton via Pushover
 	if args.notify:
@@ -2122,13 +2122,16 @@ def _main_download(args, d):
 		elif ret == False:
 			msg = "Download aborted: %s" % msg
 
-		elif type(ret) is Exception:
-			errmsg = str(ret)
+		elif type(ret) is tuple:
+			traceback.print_exception(*ret)
+
+			errmsg = str(ret[1])
 			if len(errmsg) > 32:
 				errmsg = errmsg[:32] + '...'
 
 			msg = "Dwonload aborted with exception (%s) for %s" % (errmsg, msg)
 		else:
+			print([type(ret), ret])
 			msg = "Download something: %s" % msg
 
 		pushover.Client().send_message(msg, title="ydl")
