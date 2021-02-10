@@ -281,6 +281,11 @@ class db(SH):
 
 		t = t.encode('ascii', errors='ignore').decode('ascii')
 
+		# If @t supplied is empty or contains non-ascii characters,
+		# then @t here is an empty string so use NOTHING as the title instead
+		if not len(t):
+			return "NOTHING"
+
 		# Strip off leading decimals (glob won't find hidden dot files)
 		while t[0] == '.':
 			t = t[1:]
