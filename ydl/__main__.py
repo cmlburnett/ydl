@@ -191,6 +191,9 @@ class db(SH):
 	def reopen(self):
 		super().reopen()
 
+	def get_video(self, ytid):
+		return self.v.select_one("*", "`ytid`=?", [ytid])
+
 	def get_user(self, name):
 		return self.u.select_one("*", "`name`=?", [name])
 
@@ -203,6 +206,9 @@ class db(SH):
 	def get_channel_unnamed(self, name):
 		return self.ch.select_one("*", "`name`=?", [name])
 
+
+	def add_video(self, ytid, dname):
+		return self.v.insert(ytid=ytid, skip=0, dname="MISCELLANEOUS", ctime=_now())
 
 	def add_user(self, name):
 		return self.u.insert(name=name, ctime=_now())
@@ -331,10 +337,12 @@ class db(SH):
 		return row['skip']
 
 
-def _rename_files(dname, ytid, newname):
+def _rename_files(dname, ytid, newname, old_dname=None):
 	"""
 	Rename all files in directory @dname that contains the youtube ID @ytid into the form
 		NEWNAME-YTID.SUFFIX
+
+	If video needs to move directories, then provide @old_dname as the current and @dname as the new directory.
 	"""
 
 	# Same base directory
@@ -342,6 +350,25 @@ def _rename_files(dname, ytid, newname):
 
 	# True if any files are moved
 	renamed = False
+
+	# If is moving directories, then move it first without changing file name
+	# And then (below) rename the files
+	if old_dname is not None:
+		# Make new directory if it doesn't exist
+		# This happens if a single video was added and this is the first video of the uploader
+		if not os.path.exists(dname):
+			os.mkdir(dname)
+
+		fs = glob.glob("%s/*%s*" % (old_dname, ytid))
+		fs2 = glob.glob("%s/.*%s*" % (old_dname, ytid))
+		fs = fs + fs2
+
+		for f in fs:
+			# Change directory name
+			dest = dname + '/' + f.split('/',1)[1]
+			print("\t\t%s -> %s" % (f, dest))
+
+			os.rename(f, dest)
 
 	try:
 		# Step into sub directory
@@ -947,6 +974,14 @@ def download_videos(d, filt, ignore_old):
 				'utime': utime,
 			}
 
+			# Single video added and not a part of a channel, move to channel's directory now
+			if row['dname'] == "MISCELLANEOUS":
+				# This is not ideal (prefer the human friendly channel name but can't get that from
+				# info.json file at this time) so use just the channel ID
+				dat['dname'] = ret['channel_id']
+
+				_rename_files(parts[-1], ytid, name, old_dname="MISCELLANEOUS")
+
 			# Rename TEMP files
 			if not row['name']:
 				_rename_files(dname_real, ytid, name)
@@ -1528,6 +1563,8 @@ def _main_add(args, d):
 				print("\tFound")
 			else:
 				print("\tNot found")
+				d.add_video(u[1])
+				print("\tAdded")
 
 		elif u[0] == 'u':
 			o = d.get_user(u[1])
