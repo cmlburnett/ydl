@@ -867,7 +867,7 @@ class YDL:
 
 			pref_name = db.title_to_name(args.name[1])
 			if pref_name != self.args.name[1]:
-				raise KeyError("Name '%s' is not valid" % args.name[1])
+				raise KeyError("Name '%s' is not valid" % self.args.name[1])
 
 			dname = self.db.get_v_dname(ytid)
 
