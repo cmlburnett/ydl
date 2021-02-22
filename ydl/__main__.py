@@ -509,8 +509,6 @@ class YDL:
 		d = db(os.getcwd() + '/' + self.args.file)
 		d.open()
 
-		_main_manual(self.args, d)
-
 		if self.args.fuse:
 			_main_fuse(self.args, d, self.args.fuse_absolute)
 			sys.exit()
@@ -1187,100 +1185,6 @@ def _download_video_known(d, ytid, row, alias):
 		'utime': _now()
 	}
 	return dat
-
-def _main_manual(args, d):
-	"""
-	Manually do stuff
-	"""
-
-	# Manually coerce the v.name from v.title
-	if False:
-		res = d.v.select(['rowid','title'], '')
-		rows = [dict(_) for _ in res]
-		d.begin()
-		for row in rows:
-			if row['title'] is None: continue
-
-			d.v.update({'rowid': row['rowid']}, {'name': db.title_to_name(row['title'])})
-		d.commit()
-
-		sys.exit()
-
-	# Manually coerce file names to v.name, or vnames.name if preent
-	if False:
-		res = d.v.select(['rowid','ytid'], "`dname`=''")
-		rows = [dict(_) for _ in res]
-		for row in rows:
-			ytid = row['ytid']
-
-			# Get directory and preferred name
-			dname = d.get_v_dname(ytid)
-			name = d.get_v_fname(ytid, suffix=None)
-
-			# Find anything with the matching YTID and rename it
-			fs = glob.glob("%s/*%s*" % (dname, ytid))
-			fs2 = glob.glob("%s/.*%s*" % (dname, ytid))
-			fs = fs + fs2
-			for f in fs:
-				# Split up by the YTID: everything before is trashed, and file suffix is preserved
-				parts = f.rsplit(ytid, 1)
-
-				# Rebuild file name with preferred name, YTID, and the original suffix
-				dest = "%s%s" % (name, parts[1])
-
-				if f != dest:
-					os.rename(f, dest)
-
-		sys.exit()
-
-	# Fix utime's based on the existence of each completed video (utime=null if absent)
-	if False:
-		d.begin()
-		res = d.v.select(['rowid','ytid','atime','utime'], "`dname`=''")
-		rows = [dict(_) for _ in res]
-		for i,row in enumerate(rows):
-			print("%d of %d: %s" % (i, len(rows), row['ytid']))
-
-			fname = d.get_v_fname(row['ytid'])
-			if os.path.exists(fname):
-				# No utime, so needs to be set
-				if row['utime'] is None:
-					if row['atime'] is None:
-						# Not ideal, but needs to be something
-						d.v.update({'rowid': row['rowid']}, {'utime': _now()})
-					else:
-						# No utime so assume atime
-						d.v.update({'rowid': row['rowid']}, {'utime': row['atime']})
-				else:
-					# utime set and that's fine
-					pass
-			else:
-				# utime should be null
-				d.v.update({'rowid': row['rowid']}, {'utime': None})
-
-		d.commit()
-		sys.exit()
-
-	if False:
-		# Test hashing
-		hist = {}
-		r = 16
-		for i in range(r):
-			hist[i] = 0
-
-		res = d.v.select('ytid')
-		for row in res:
-			a = ytid_hash(row['ytid'], r)
-			# Just call to make sure it doesn't error
-			b = ytid_hash_remap(row['ytid'], r, r+1)
-			hist[a] += 1
-
-		avg = sum(hist.values()) // r
-		print(hist)
-		print([sum(hist.values()), avg])
-		print([_ - avg for _ in hist.values()])
-
-		sys.exit()
 
 def _main_fuse(args, d, absolutepath):
 	# Get mount point
