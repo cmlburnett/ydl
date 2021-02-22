@@ -538,7 +538,7 @@ class YDL:
 			self.unskip()
 
 		if type(self.args.name) is list:
-			_main_name(self.args, self.db)
+			self.name()
 
 		if type(self.args.alias) is list:
 			_main_alias(self.args, self.db)
@@ -824,6 +824,69 @@ class YDL:
 				row = self.db.v.select_one("rowid", "`ytid`=?", [ytid])
 				self.db.v.update({"rowid": row['rowid']}, {"skip": False})
 			self.db.commit()
+
+	def name(self):
+		"""
+		List all the preferred names if --name.
+		List information about a single video if --name YTID is provided.
+		Set preferred name if --name YTID NAME is provided
+		"""
+
+		if len(self.args.name) == 0:
+			res = self.db.vnames.select(['ytid','name'])
+			rows = [dict(_) for _ in res]
+			rows = sorted(rows, key=lambda x: x['ytid'])
+
+			print("Preferred names (%d):" % len(rows))
+			for row in rows:
+				sub_row = self.db.v.select_one('dname', '`ytid`=?', [row['ytid']])
+
+				print("\t%s -> %s / %s" % (row['ytid'], sub_row['dname'], row['name']))
+
+		elif len(self.args.name) == 1:
+			ytid = self.args.name[0]
+
+			row = self.db.v.select_one(['rowid','dname','name','title'], '`ytid`=?', [ytid])
+			if not row:
+				print("No video with YTID '%s' found" % ytid)
+				sys.exit()
+
+			print("YTID: %s" % ytid)
+			print("Title: %s" % row['title'])
+			print("Directory: %s" % row['dname'])
+			print("Computed name: %s" % row['name'])
+
+			row = self.db.vnames.select_one('name', '`ytid`=?', [ytid])
+			if row:
+				print("Preferred name: %s" % row['name'])
+			else:
+				print("-- NO PREFERRED NAME SET --")
+
+		elif len(self.args.name) == 2:
+			ytid = self.args.name[0]
+
+			pref_name = db.title_to_name(args.name[1])
+			if pref_name != self.args.name[1]:
+				raise KeyError("Name '%s' is not valid" % args.name[1])
+
+			dname = self.db.get_v_dname(ytid)
+
+			# Get file name without suffix
+			fname = self.db.get_v_fname(ytid, suffix=None)
+
+			# Rename old files
+			_rename_files(dname, ytid, pref_name)
+
+			self.db.begin()
+			row = self.db.vnames.select_one('rowid', '`ytid`=?', [ytid])
+			if row:
+				self.db.vnames.update({'rowid': row['rowid']}, {'name': pref_name})
+			else:
+				self.db.vnames.insert(ytid=ytid, name=pref_name)
+			self.db.commit()
+
+		else:
+			print("Too many arguments")
 
 def sync_channels_named(args, d, filt, ignore_old, rss_ok):
 	"""
@@ -1832,69 +1895,6 @@ def _main_add(args, d):
 			raise ValueError("Unrecognize URL type %s" % (u,))
 
 	d.commit()
-
-def _main_name(args, d):
-	"""
-	List all the preferred names if --name.
-	List information about a single video if --name YTID is provided.
-	Set preferred name if --name YTID NAME is provided
-	"""
-
-	if len(args.name) == 0:
-		res = d.vnames.select(['ytid','name'])
-		rows = [dict(_) for _ in res]
-		rows = sorted(rows, key=lambda x: x['ytid'])
-
-		print("Preferred names (%d):" % len(rows))
-		for row in rows:
-			sub_row = d.v.select_one('dname', '`ytid`=?', [row['ytid']])
-
-			print("\t%s -> %s / %s" % (row['ytid'], sub_row['dname'], row['name']))
-
-	elif len(args.name) == 1:
-		ytid = args.name[0]
-
-		row = d.v.select_one(['rowid','dname','name','title'], '`ytid`=?', [ytid])
-		if not row:
-			print("No video with YTID '%s' found" % ytid)
-			sys.exit()
-
-		print("YTID: %s" % ytid)
-		print("Title: %s" % row['title'])
-		print("Directory: %s" % row['dname'])
-		print("Computed name: %s" % row['name'])
-
-		row = d.vnames.select_one('name', '`ytid`=?', [ytid])
-		if row:
-			print("Preferred name: %s" % row['name'])
-		else:
-			print("-- NO PREFERRED NAME SET --")
-
-	elif len(args.name) == 2:
-		ytid = args.name[0]
-
-		pref_name = db.title_to_name(args.name[1])
-		if pref_name != args.name[1]:
-			raise KeyError("Name '%s' is not valid" % args.name[1])
-
-		dname = d.get_v_dname(ytid)
-
-		# Get file name without suffix
-		fname = d.get_v_fname(ytid, suffix=None)
-
-		# Rename old files
-		_rename_files(dname, ytid, pref_name)
-
-		d.begin()
-		row = d.vnames.select_one('rowid', '`ytid`=?', [ytid])
-		if row:
-			d.vnames.update({'rowid': row['rowid']}, {'name': pref_name})
-		else:
-			d.vnames.insert(ytid=ytid, name=pref_name)
-		d.commit()
-
-	else:
-		print("Too many arguments")
 
 
 def _main_alias(args, d):
