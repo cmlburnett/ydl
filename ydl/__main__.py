@@ -559,6 +559,11 @@ def __sync_list(args, d, d_sub, rows, f_get_list, summary):
 	"""
 	Base function that does all the list syncing.
 
+	This iterates over a lsit of channels in @rows.
+	This list indicates if RSS is ok to use or not (can be overridden to not use RSS).
+	The RSS is used only to indicate that there are new videos to sync.
+	If a full sync is needed then __sync_list_full() is called.
+
 	@d is the database object
 	@d_sub is table object in @d
 	@rows is a simple array of names & RSS ok flags to print out and reference `vids` entries to
@@ -646,6 +651,11 @@ def __sync_list(args, d, d_sub, rows, f_get_list, summary):
 def __sync_list_full(args, d, d_sub, rows, f_get_list, summary, c_name, c_name_alt, new):
 	"""
 	Fetch the full list
+
+	Accessing the channel via youtube-dl is necessary to obtain the order of the channel
+	 and to adjust the index values for each video in the list.
+	This is, unfortunately, slow at this time as it can take some time to update thousands of entries.
+
 	@args -- argparse result object
 	@d -- database object
 	@d_sub -- database table object for this particular list
