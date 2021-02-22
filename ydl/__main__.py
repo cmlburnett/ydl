@@ -501,65 +501,71 @@ class YDL:
 
 		return p.parse_args()
 
+	def open_db(self):
+		"""Open the database object"""
+		self.db = db(os.getcwd() + '/' + self.args.file)
+		self.db.open()
+
+		# Do any verification of the database here
+
 	def main(self):
 		""" Main function called from invoking the library """
 
 		self.process_args()
 
-		d = db(os.getcwd() + '/' + self.args.file)
-		d.open()
+		self.open_db()
 
 		if self.args.fuse:
-			_main_fuse(self.args, d, self.args.fuse_absolute)
+			_main_fuse(self.args, self.db, self.args.fuse_absolute)
 			sys.exit()
 
 		#if type(self.args.stride) is list:
-		#	_main_stride(self.args, d)
+		#	_main_stride(self.args, self.db)
 
 		if type(self.args.showpath) is list:
-			_main_showpath(self.args, d)
+			_main_showpath(self.args, self.db)
 
 		if type(self.args.list) is list or type(self.args.listall) is list:
-			_main_list(self.args, d)
+			_main_list(self.args, self.db)
 
 		if type(self.args.add) is list:
-			_main_add(self.args, d)
+			_main_add(self.args, self.db)
 
 		if self.args.skip is not None:
-			_main_skip(self.args, d)
+			_main_skip(self.args, self.db)
 
 		if self.args.unskip is not None:
-			_main_unskip(self.args, d)
+			_main_unskip(self.args, self.db)
 
 		if type(self.args.name) is list:
-			_main_name(self.args, d)
+			_main_name(self.args, self.db)
 
 		if type(self.args.alias) is list:
-			_main_alias(self.args, d)
+			_main_alias(self.args, self.db)
 
 		if type(self.args.info) is list:
-			_main_info(self.args, d)
+			_main_info(self.args, self.db)
 
 		if self.args.sync is not False or self.args.sync_list is not False:
-			_main_sync_list(self.args, d)
+			_main_sync_list(self.args, self.db)
 
 		if self.args.sync is not False or self.args.sync_videos is not False:
-			_main_sync_videos(self.args, d)
+			_main_sync_videos(self.args, self.db)
 
 		if self.args.update_names is not False:
-			_main_updatenames(self.args, d)
+			_main_updatenames(self.args, self.db)
 
 		if self.args.download is not False:
-			_main_download(self.args, d)
+			_main_download(self.args, self.db)
 
 		if self.args.merge_playlist is not False:
-			_main_merge_playlist(self.args, d)
+			_main_merge_playlist(self.args, self.db)
 
 		if self.args.chapter_edit is not False:
-			_main_chapter_edit(self.args, d)
+			_main_chapter_edit(self.args, self.db)
 
 		if self.args.chapterize is not False:
-			_main_chapterize(self.args, d)
+			_main_chapterize(self.args, self.db)
 
 def sync_channels_named(args, d, filt, ignore_old, rss_ok):
 	"""
