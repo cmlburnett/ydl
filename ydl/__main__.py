@@ -526,7 +526,7 @@ class YDL:
 			_main_showpath(self.args, self.db)
 
 		if type(self.args.list) is list or type(self.args.listall) is list:
-			_main_list(self.args, self.db)
+			self.list()
 
 		if type(self.args.add) is list:
 			self.add()
@@ -1105,6 +1105,196 @@ class YDL:
 
 		else:
 			print("Too many variables")
+
+	def list(self):
+		"""
+		List all the user, unnamed channels, named channels, and playlists.
+		If --listall supplied then list all of that and the videos for each list.
+		"""
+
+		self.list_user()
+		self.list_c()
+		self.list_ch()
+		self.list_pl()
+
+	def listall(self, ytids):
+		"""
+		List the videos for the YTID's provided in @ytids.
+		"""
+
+		# Count number of videos that exist
+		counts = 0
+		skipped = 0
+
+		ytids_str = list_to_quoted_csv(ytids)
+
+		# Get video data for all the videos supplied
+		# I don't know if there's a query length limit...
+		res = self.db.v.select(["ytid","dname","name","title","duration","skip"], "`ytid` in (%s)" % ytids_str)
+		rows = {_['ytid']:_ for _ in res}
+
+		# Map ytids to alias
+		res = self.db.vnames.select(["ytid","name"], "`ytid` in (%s)" % ytids_str)
+		aliases = {_['ytid']:_['name'] for _ in res}
+
+		# Iterate over ytids in order provided
+		for ytid in ytids:
+			# In vids but not v (yet)
+			if ytid not in rows:
+				print("\t\t%s:   ?" % ytid)
+				continue
+
+			row = rows[ytid]
+
+			if row['skip']:
+				print("\t\t%s: S" % ytid)
+				skipped += 1
+				continue
+
+			# Check if there's an alias, otherwise format_v_fname takes None for the value
+			alias = None
+			if ytid in aliases:
+				alias = aliases[ytid]
+
+			# All DB querying is done above, so just format it
+			path = db.format_v_fname(row['dname'], row['name'], alias, ytid, "mkv")
+
+			# Check if it exists
+			exists = os.path.exists(path)
+			if exists:
+				counts += 1
+
+			if row['title'] is None:
+				print("\t\t%s: ?" % ytid)
+			else:
+				t = row['title']
+				t = t.replace('\n', '\\n')
+				if exists:
+					print("\t\t%s: E %s (%s)" % (ytid, t, sec_str(row['duration'])))
+				else:
+					print("\t\t%s:   %s (%s)" % (ytid, t, sec_str(row['duration'])))
+
+		print()
+		print("\t\tSkipped: %d of %d" % (skipped, len(ytids)))
+		print("\t\tExists: %d of %d non-skipped" % (counts, len(ytids)-skipped))
+
+	def list_user(self):
+		"""
+		List the users.
+		"""
+
+		where = ""
+		if type(self.args.list) is list and len(self.args.list):
+			where = "`name` in (%s)" % list_to_quoted_csv(self.args.list)
+		if type(self.args.listall) is list and len(self.args.listall):
+			where = "`name` in (%s)" % list_to_quoted_csv(self.args.listall)
+
+		res = self.db.u.select("*", where)
+		rows = [dict(_) for _ in res]
+		rows = sorted(rows, key=lambda _: _['name'])
+
+
+		print("Users (%d):" % len(rows))
+		for row in rows:
+			sub_res = self.db.vids.select(["rowid","ytid"], "`name`=?", [row['name']], "`idx` asc")
+			sub_rows = [dict(_) for _ in sub_res]
+			sub_cnt = len(sub_rows)
+
+			print("\t%s (%d)" % (row['name'], sub_cnt))
+
+			# Do only if --listall
+			if type(self.args.listall) is list:
+				ytids = [_['ytid'] for _ in sub_rows]
+				self.listall(ytids)
+
+	def list_c(self):
+		"""
+		List the named channels.
+		"""
+
+		where = ""
+		if type(self.args.list) is list and len(self.args.list):
+			where = "`name` in (%s)" % list_to_quoted_csv(self.args.list)
+		if type(self.args.listall) is list and len(self.args.listall):
+			where = "`name` in (%s)" % list_to_quoted_csv(self.args.listall)
+
+		res = self.db.c.select("*", where)
+		rows = [dict(_) for _ in res]
+		rows = sorted(rows, key=lambda _: _['name'])
+
+		print("Named channels (%d):" % len(rows))
+		for row in rows:
+			sub_res = self.db.vids.select(["rowid","ytid"], "`name`=?", [row['name']], "`idx` asc")
+			sub_rows = [dict(_) for _ in sub_res]
+			sub_cnt = len(sub_rows)
+
+			print("\t%s (%d)" % (row['name'], sub_cnt))
+
+			# Do only if --listall
+			if type(self.args.listall) is list:
+				ytids = [_['ytid'] for _ in sub_rows]
+				self.listall(ytids)
+
+	def list_ch(self):
+		"""
+		List the unnamed channels.
+		"""
+
+		where = ""
+		if type(self.args.list) is list and len(self.args.list):
+			where = "`name` in ({0}) or `alias` in ({0})".format(list_to_quoted_csv(self.args.list))
+		if type(self.args.listall) is list and len(self.args.listall):
+			where = "`name` in ({0}) or `alias` in ({0})".format(list_to_quoted_csv(self.args.listall))
+
+		res = self.db.ch.select(['rowid','name','alias'], where)
+		rows = [dict(_) for _ in res]
+		rows = sorted(rows, key=lambda _: _['alias'] or _['name'])
+
+		print("Unnamed channels (%d):" % len(rows))
+		for row in rows:
+			name = row['alias'] or row['name']
+
+			sub_res = self.db.vids.select(["rowid","ytid"], "`name`=?", [name], "`idx` asc")
+			sub_rows = [dict(_) for _ in sub_res]
+			sub_cnt = len(sub_rows)
+
+			if row['alias']:
+				print("\t%s -> %s (%d)" % (row['name'], row['alias'], sub_cnt))
+			else:
+				print("\t%s (%d)" % (row['name'], sub_cnt))
+
+			# Do only if --listall
+			if type(self.args.listall) is list:
+				ytids = [_['ytid'] for _ in sub_rows]
+				self.listall(ytids)
+
+	def list_pl(self):
+		"""
+		List the playlists.
+		"""
+
+		where = ""
+		if type(self.args.list) is list and len(self.args.list):
+			where = "`ytid` in (%s)" % list_to_quoted_csv(self.args.list)
+		if type(self.args.listall) is list and len(self.args.listall):
+			where = "`ytid` in (%s)" % list_to_quoted_csv(self.args.listall)
+
+		res = self.db.pl.select("*", where)
+		rows = [dict(_) for _ in res]
+		rows = sorted(rows, key=lambda _: _['ytid'])
+
+		print("Playlists (%d):" % len(rows))
+		for row in rows:
+			sub_res = self.db.vids.select(["rowid","ytid"], "`name`=?", [row['ytid']], "`idx` asc")
+			sub_rows = [dict(_) for _ in sub_res]
+			sub_cnt = len(sub_rows)
+
+			print("\t%s (%d)" % (row['ytid'], sub_cnt))
+
+			# Do only if --listall
+			if type(self.args.listall) is list:
+				ytids = [_['ytid'] for _ in sub_rows]
+				self.listall(ytids)
 
 def sync_channels_named(args, d, filt, ignore_old, rss_ok):
 	"""
@@ -1795,197 +1985,6 @@ def _main_showpath(args, d):
 
 		print("\t%s" % path)
 		print()
-
-
-def _main_list(args, d):
-	"""
-	List all the user, unnamed channels, named channels, and playlists.
-	If --listall supplied then list all of that and the videos for each list.
-	"""
-
-	_main_list_user(args, d)
-	_main_list_c(args, d)
-	_main_list_ch(args, d)
-	_main_list_pl(args, d)
-
-def _main_listall(args, d, ytids):
-	"""
-	List the videos for the YTID's provided in @ytids.
-	"""
-
-	# Count number of videos that exist
-	counts = 0
-	skipped = 0
-
-	ytids_str = list_to_quoted_csv(ytids)
-
-	# Get video data for all the videos supplied
-	# I don't know if there's a query length limit...
-	res = d.v.select(["ytid","dname","name","title","duration","skip"], "`ytid` in (%s)" % ytids_str)
-	rows = {_['ytid']:_ for _ in res}
-
-	# Map ytids to alias
-	res = d.vnames.select(["ytid","name"], "`ytid` in (%s)" % ytids_str)
-	aliases = {_['ytid']:_['name'] for _ in res}
-
-	# Iterate over ytids in order provided
-	for ytid in ytids:
-		# In vids but not v (yet)
-		if ytid not in rows:
-			print("\t\t%s:   ?" % ytid)
-			continue
-
-		row = rows[ytid]
-
-		if row['skip']:
-			print("\t\t%s: S" % ytid)
-			skipped += 1
-			continue
-
-		# Check if there's an alias, otherwise format_v_fname takes None for the value
-		alias = None
-		if ytid in aliases:
-			alias = aliases[ytid]
-
-		# All DB querying is done above, so just format it
-		path = db.format_v_fname(row['dname'], row['name'], alias, ytid, "mkv")
-
-		# Check if it exists
-		exists = os.path.exists(path)
-		if exists:
-			counts += 1
-
-		if row['title'] is None:
-			print("\t\t%s: ?" % ytid)
-		else:
-			t = row['title']
-			t = t.replace('\n', '\\n')
-			if exists:
-				print("\t\t%s: E %s (%s)" % (ytid, t, sec_str(row['duration'])))
-			else:
-				print("\t\t%s:   %s (%s)" % (ytid, t, sec_str(row['duration'])))
-
-	print()
-	print("\t\tSkipped: %d of %d" % (skipped, len(ytids)))
-	print("\t\tExists: %d of %d non-skipped" % (counts, len(ytids)-skipped))
-
-def _main_list_user(args, d):
-	"""
-	List the users.
-	"""
-
-	where = ""
-	if type(args.list) is list and len(args.list):
-		where = "`name` in (%s)" % list_to_quoted_csv(args.list)
-	if type(args.listall) is list and len(args.listall):
-		where = "`name` in (%s)" % list_to_quoted_csv(args.listall)
-
-	res = d.u.select("*", where)
-	rows = [dict(_) for _ in res]
-	rows = sorted(rows, key=lambda _: _['name'])
-
-
-	print("Users (%d):" % len(rows))
-	for row in rows:
-		sub_res = d.vids.select(["rowid","ytid"], "`name`=?", [row['name']], "`idx` asc")
-		sub_rows = [dict(_) for _ in sub_res]
-		sub_cnt = len(sub_rows)
-
-		print("\t%s (%d)" % (row['name'], sub_cnt))
-
-		# Do only if --listall
-		if type(args.listall) is list:
-			ytids = [_['ytid'] for _ in sub_rows]
-			_main_listall(args, d, ytids)
-
-def _main_list_c(args, d):
-	"""
-	List the named channels.
-	"""
-
-	where = ""
-	if type(args.list) is list and len(args.list):
-		where = "`name` in (%s)" % list_to_quoted_csv(args.list)
-	if type(args.listall) is list and len(args.listall):
-		where = "`name` in (%s)" % list_to_quoted_csv(args.listall)
-
-	res = d.c.select("*", where)
-	rows = [dict(_) for _ in res]
-	rows = sorted(rows, key=lambda _: _['name'])
-
-	print("Named channels (%d):" % len(rows))
-	for row in rows:
-		sub_res = d.vids.select(["rowid","ytid"], "`name`=?", [row['name']], "`idx` asc")
-		sub_rows = [dict(_) for _ in sub_res]
-		sub_cnt = len(sub_rows)
-
-		print("\t%s (%d)" % (row['name'], sub_cnt))
-
-		# Do only if --listall
-		if type(args.listall) is list:
-			ytids = [_['ytid'] for _ in sub_rows]
-			_main_listall(args, d, ytids)
-
-def _main_list_ch(args, d):
-	"""
-	List the unnamed channels.
-	"""
-
-	where = ""
-	if type(args.list) is list and len(args.list):
-		where = "`name` in ({0}) or `alias` in ({0})".format(list_to_quoted_csv(args.list))
-	if type(args.listall) is list and len(args.listall):
-		where = "`name` in ({0}) or `alias` in ({0})".format(list_to_quoted_csv(args.listall))
-
-	res = d.ch.select(['rowid','name','alias'], where)
-	rows = [dict(_) for _ in res]
-	rows = sorted(rows, key=lambda _: _['alias'] or _['name'])
-
-	print("Unnamed channels (%d):" % len(rows))
-	for row in rows:
-		name = row['alias'] or row['name']
-
-		sub_res = d.vids.select(["rowid","ytid"], "`name`=?", [name], "`idx` asc")
-		sub_rows = [dict(_) for _ in sub_res]
-		sub_cnt = len(sub_rows)
-
-		if row['alias']:
-			print("\t%s -> %s (%d)" % (row['name'], row['alias'], sub_cnt))
-		else:
-			print("\t%s (%d)" % (row['name'], sub_cnt))
-
-		# Do only if --listall
-		if type(args.listall) is list:
-			ytids = [_['ytid'] for _ in sub_rows]
-			_main_listall(args, d, ytids)
-
-def _main_list_pl(args, d):
-	"""
-	List the playlists.
-	"""
-
-	where = ""
-	if type(args.list) is list and len(args.list):
-		where = "`ytid` in (%s)" % list_to_quoted_csv(args.list)
-	if type(args.listall) is list and len(args.listall):
-		where = "`ytid` in (%s)" % list_to_quoted_csv(args.listall)
-
-	res = d.pl.select("*", where)
-	rows = [dict(_) for _ in res]
-	rows = sorted(rows, key=lambda _: _['ytid'])
-
-	print("Playlists (%d):" % len(rows))
-	for row in rows:
-		sub_res = d.vids.select(["rowid","ytid"], "`name`=?", [row['ytid']], "`idx` asc")
-		sub_rows = [dict(_) for _ in sub_res]
-		sub_cnt = len(sub_rows)
-
-		print("\t%s (%d)" % (row['ytid'], sub_cnt))
-
-		# Do only if --listall
-		if type(args.listall) is list:
-			ytids = [_['ytid'] for _ in sub_rows]
-			_main_listall(args, d, ytids)
 
 def _main_sync_list(args, d):
 	filt = None
