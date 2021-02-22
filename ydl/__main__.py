@@ -532,7 +532,7 @@ class YDL:
 			_main_add(self.args, self.db)
 
 		if self.args.skip is not None:
-			_main_skip(self.args, self.db)
+			self.skip()
 
 		if self.args.unskip is not None:
 			_main_unskip(self.args, self.db)
@@ -752,6 +752,43 @@ class YDL:
 		for k,v in inf:
 			print('\t\t' + ("%0" + str(maxlen) + "s: %s") % (k,v))
 		print()
+
+	def skip(self):
+		"""
+		List or add videos to the skip list.
+		"""
+
+		if not len(self.args.skip):
+			res = self.db.v.select("ytid", "`skip`=?", [True])
+			ytids = [_['ytid'] for _ in res]
+			ytids = sorted(ytids)
+
+			if self.args.json:
+				print(json.dumps(ytids))
+			elif self.args.xml:
+				raise NotImplementedError("XML not implemented yet")
+			else:
+				# FIXME: abide by --json and --xml
+				print("Videos marked skip (%d):" % len(ytids))
+				for ytid in ytids:
+					print("\t%s" % ytid)
+		else:
+			# This could signify STDIN contains json or xml to intrepret as ytids???
+			if self.args.json:
+				raise NotImplementedError("--json not meaningful when adding skipped videos")
+			if self.args.xml:
+				raise NotImplementedError("--xml not meaningful when adding skipped videos")
+
+			ytids = list(set(self.args.skip))
+			print("Marking videos to skip (%d):" % len(ytids))
+
+
+			self.db.begin()
+			for ytid in ytids:
+				print("\t%s" % ytid)
+				row = self.db.v.select_one("rowid", "`ytid`=?", [ytid])
+				self.db.v.update({"rowid": row['rowid']}, {"skip": True})
+			self.db.commit()
 
 def sync_channels_named(args, d, filt, ignore_old, rss_ok):
 	"""
@@ -1760,44 +1797,6 @@ def _main_add(args, d):
 			raise ValueError("Unrecognize URL type %s" % (u,))
 
 	d.commit()
-
-
-def _main_skip(args, d):
-	"""
-	List or add videos to the skip list.
-	"""
-
-	if not len(args.skip):
-		res = d.v.select("ytid", "`skip`=?", [True])
-		ytids = [_['ytid'] for _ in res]
-		ytids = sorted(ytids)
-
-		if args.json:
-			print(json.dumps(ytids))
-		elif args.xml:
-			raise NotImplementedError("XML not implemented yet")
-		else:
-			# FIXME: abide by --json and --xml
-			print("Videos marked skip (%d):" % len(ytids))
-			for ytid in ytids:
-				print("\t%s" % ytid)
-	else:
-		# This could signify STDIN contains json or xml to intrepret as ytids???
-		if args.json:
-			raise NotImplementedError("--json not meaningful when adding skipped videos")
-		if args.xml:
-			raise NotImplementedError("--xml not meaningful when adding skipped videos")
-
-		ytids = list(set(args.skip))
-		print("Marking videos to skip (%d):" % len(ytids))
-
-
-		d.begin()
-		for ytid in ytids:
-			print("\t%s" % ytid)
-			row = d.v.select_one("rowid", "`ytid`=?", [ytid])
-			d.v.update({"rowid": row['rowid']}, {"skip": True})
-		d.commit()
 
 def _main_unskip(args, d):
 	"""
