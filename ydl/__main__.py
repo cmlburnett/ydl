@@ -986,11 +986,16 @@ def download_videos(d, filt, ignore_old):
 
 			# Single video added and not a part of a channel, move to channel's directory now
 			if row['dname'] == "MISCELLANEOUS":
+				print("\t\tRenaming out of MISCELLANEOUS directory")
 				# This is not ideal (prefer the human friendly channel name but can't get that from
 				# info.json file at this time) so use just the channel ID
 				dat['dname'] = ret['channel_id']
+				print('dat', dat)
 
-				_rename_files(parts[-1], ytid, name, old_dname="MISCELLANEOUS")
+				try:
+					_rename_files(dat['dname'], ytid, name, old_dname=row['dname'])
+				except Exception as e:
+					print(e)
 
 			# Rename TEMP files
 			if not row['name']:
@@ -1278,7 +1283,7 @@ def _main_fuse(args, d, absolutepath):
 	print("\tMount: %s" % os.path.abspath(mnt))
 	print("Enter ctrl-c to quit and unmount")
 	print("Mounting...")
-	ydl_fuse(d, mnt, rootbase)
+	ydl_fuse(d, mnt, rootbase, allow_other=True)
 
 def _main_showpath(args, d):
 	"""
@@ -1573,7 +1578,7 @@ def _main_add(args, d):
 				print("\tFound")
 			else:
 				print("\tNot found")
-				d.add_video(u[1])
+				d.add_video(u[1], "MISCELLANEOUS")
 				print("\tAdded")
 
 		elif u[0] == 'u':
@@ -1873,12 +1878,12 @@ def _main_info_db(args, d):
 	print("\tUsers: %d" % us)
 	print("\tPlaylists: %d" % pls)
 
-	vs = d.v.num_rows()
+	total = vs = d.v.num_rows()
 	print("\tVideos: %d" % vs)
 	vs = d.v.num_rows('`skip`=1')
 	print("\t\tSkipped: %d" % vs)
 	vs = d.v.num_rows('`utime` is not null')
-	print("\t\tDownloaded: %d" % vs)
+	print("\t\tDownloaded: %d (%.2f%%)" % (vs,100*vs/total))
 	vs = d.vnames.num_rows()
 	print("\t\tWith preferred names: %d" % vs)
 

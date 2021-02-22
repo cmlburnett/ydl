@@ -261,6 +261,8 @@ class fuse_obj_videos(fuse_obj):
 
 		self.add_dir( fuse_obj_videos_by_date(db, rootbase, 'date_publish', 'ptime') )
 		self.add_dir( fuse_obj_videos_by_date(db, rootbase, 'date_download', 'utime') )
+		self.add_dir( fuse_obj_videos_merged(db, rootbase, 'merged_playlist') )
+		self.add_dir( fuse_obj_videos_chapterized(db, rootbase, 'chapterized') )
 
 	def add_dir(self, o):
 		self._dirs[o.Path] = o
@@ -296,6 +298,98 @@ class fuse_obj_videos(fuse_obj):
 			return self._dirs[ path[1] ].readdir(path, index+1)
 		else:
 			raise FuseOSError(errno.ENOENT)
+
+class fuse_obj_videos_merged(fuse_obj):
+	def __init__(self, db, rootbase, path):
+		self._db = db
+		self._rootbase = rootbase
+		self._table = db.v
+		self._path = path
+
+	@property
+	def Path(self): return self._path
+
+	def getattr(self, path, index):
+		s = os.lstat(os.path.dirname(self._db.Filename))
+
+		return {
+			'st_atime': s.st_atime,
+			'st_ctime': s.st_ctime,
+			'st_mtime': s.st_mtime,
+
+			'st_gid': s.st_gid,
+			'st_uid': s.st_uid,
+			'st_mode': self._dirperm,
+			'st_nlink': 1,
+			'st_size': self.readdir_len(path,index),
+		}
+
+	def readdir_len(self, path, index):
+		return len(self.readdir(path, index))
+
+	def readdir(self, path, index):
+		ret = ['.','..']
+
+		return ret
+
+class fuse_obj_videos_chapterized(fuse_obj):
+	def __init__(self, db, rootbase, path):
+		self._db = db
+		self._rootbase = rootbase
+		self._table = db.v
+		self._path = path
+
+	@property
+	def Path(self): return self._path
+
+	def getattr(self, path, index):
+		s = os.lstat(os.path.dirname(self._db.Filename))
+
+		if len(path) == 2:
+			return {
+				'st_atime': s.st_atime,
+				'st_ctime': s.st_ctime,
+				'st_mtime': s.st_mtime,
+
+				'st_gid': s.st_gid,
+				'st_uid': s.st_uid,
+				'st_mode': self._dirperm,
+				'st_nlink': 1,
+				'st_size': self.readdir_len(path,index),
+			}
+		else:
+			return {
+				'st_atime': s.st_atime,
+				'st_ctime': s.st_ctime,
+				'st_mtime': s.st_mtime,
+
+				'st_gid': s.st_gid,
+				'st_uid': s.st_uid,
+				'st_mode': self._lnkperm,
+				'st_nlink': 1,
+				'st_size': 64,
+			}
+
+	def readdir_len(self, path, index):
+		return len(self.readdir(path, index))
+
+	def readdir(self, path, index):
+		ret = ['.','..']
+
+		# See what chapterized videos have been done
+		fs = glob.glob(os.path.dirname(self._db.Filename) + '/CHAPTERIZED/*.chapters.mkv')
+		for f in fs:
+			# /foo/bar/ydl/PLID/YTID.chapters.mkv
+			parts = f.split('.',1)
+			ytid = os.path.basename(parts[0])
+			row = self._db.v.select_one('dname', '`ytid`=?', [ytid])
+			fname = self._db.get_v_fname(ytid)
+
+			# FIXME: Proper link is to $YDL/CHAPTERIZED/YTID.chapters.mkv
+
+			ret.append( row['dname'] + '-' + os.path.basename(fname) )
+
+		return ret
 
 class fuse_obj_videos_by_date(fuse_obj):
 	def __init__(self, db, rootbase, path, colname):
@@ -457,6 +551,7 @@ class _ydl_fuse(fuse.LoggingMixIn, fuse.Operations):
 
 	@classmethod
 	def video_path(cls, db, rootbase, path):
+		print('path', path, rootbase)
 		# Shortcut if True
 		if True:
 			if rootbase.startswith('..'):
