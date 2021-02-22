@@ -559,13 +559,13 @@ class YDL:
 			_main_download(self.args, self.db)
 
 		if self.args.merge_playlist is not False:
-			_main_merge_playlist(self.args, self.db)
+			self.merge_playlist()
 
 		if self.args.chapter_edit is not False:
-			_main_chapter_edit(self.args, self.db)
+			self.chapter_edit()
 
 		if self.args.chapterize is not False:
-			_main_chapterize(self.args, self.db)
+			self.chapterize()
 
 	def add(self):
 		# Processing list of URLs
@@ -1388,6 +1388,318 @@ class YDL:
 		print("Mounting...")
 		ydl_fuse(self.db, mnt, rootbase, allow_other=True)
 
+	def merge_playlist(self):
+		dname = os.path.dirname(self.db.Filename) + '/MERGED'
+		if not os.path.exists(dname):
+			os.mkdir(dname)
+
+		print("Checking that all provided playlists have been completely downloaded first")
+		print()
+
+		dat = {}
+
+		abort = False
+		for ytid in self.args.merge_playlist:
+			print(ytid)
+			dat[ytid] = []
+
+			row = self.db.pl.select_one('*', '`ytid`=?', [ytid])
+			if row is None:
+				print("\tPlaylist %s not found" % ytid)
+				abort = True
+			else:
+				fname = dname + '/' + ytid + '.chapters.mkv'
+				if os.path.exists(fname):
+					print("\tEXISTS, skipping")
+				else:
+					# TODO: suspect there will be an issue with skipped videos, will skip (*snark*) that check for now
+
+					# Total length of playlist in seconds
+					totallen = 0
+
+					res = self.db.vids.select('*', '`name`=?', [ytid])
+					vids = [dict(_) for _ in res]
+					vids = sorted(vids, key=lambda _: _['idx'])
+
+					cnt = 0
+					for v in vids:
+						row = self.db.v.select_one(['duration','title'], '`ytid`=?', [v['ytid']])
+
+						path = self.db.get_v_fname(v['ytid'])
+						exists = os.path.exists(path)
+						if not exists:
+							print("\t%d: %s - DOES NOT EXIST" % (v['idx'], v['ytid']))
+						else:
+							print("\t%d: %s (%s) - EXISTS" % (v['idx'],v['ytid'],  sec_str(row['duration'])))
+							cnt += 1
+
+							dat[ytid].append({'ytid': v['ytid'], 'start': totallen, 'path': path, 'title': row['title']})
+
+							totallen += row['duration']
+
+					print()
+					print("%d of %d exists" % (cnt, len(vids)))
+					if cnt != len(vids):
+						print("Not all videos are downloaded, cannot merge. Do --download first.")
+						abort = True
+					else:
+						print("Expected video length: %s" % sec_str(totallen))
+
+		if abort:
+			sys.exit(-1)
+
+		print()
+		print('-'*80)
+		print("Processing playlists and merging")
+		print()
+
+		for ytid in self.args.merge_playlist:
+			print(ytid)
+
+			basedir = os.getcwd()
+			try:
+				os.chdir(basedir + '/MERGED')
+				fname_mkv = ytid + '.mkv'
+				fname_list = ytid + '.txt'
+				fname_chaps = ytid + '.chapters.xml'
+				fname_chapsmkv = ytid + '.chapters.mkv'
+
+				if os.path.exists(fname_chapsmkv):
+					print("\tAlready merged, skipping")
+					continue
+
+
+				if not os.path.exists(fname_list):
+					# Write list of videos to merge
+					with open(fname_list, 'w') as f:
+						for v in dat[ytid]:
+							f.write("file '%s'\n" % v['path'])
+
+				if not os.path.exists(fname_mkv):
+					# Merge videos
+					# NB: this currently transcodes to h265 as the VP9 codec has issues with invisible frames
+					args = ['ffmpeg', '-f', 'concat', '-safe', '0', '-i', fname_list, '-c:v', 'h264', '-c:a', 'copy', fname_mkv]
+					print(" ".join(args))
+					subprocess.run(args)
+
+				if not os.path.exists(fname_chaps):
+					# Create chapters XML
+					cxml = mkvxmlmaker.MKVXML_chapter()
+					for v in dat[ytid]:
+						cxml.AddChapter(sec_str(v['start']), v['title'])
+					cxml.Save(fname_chaps)
+
+				# Add in chapter info
+				args = ['mkvmerge', '-o', fname_chapsmkv, '--chapters', fname_chaps, fname_mkv]
+				print(" ".join(args))
+				subprocess.run(args)
+
+			finally:
+				os.chdir(basedir)
+			print()
+			pass
+
+		print()
+		print("-"*80)
+		print("Final file names")
+		print()
+
+		for ytid in self.args.merge_playlist:
+			fname_chapsmkv = ytid + '.chapters.mkv'
+
+			print(ytid)
+			print("\tMERGED/%s" % fname_chapsmkv)
+
+	def chapter_edit(self):
+		abort = False
+
+		dat = {}
+
+		print("Checking that videos are present")
+		print()
+
+		for ytid in self.args.chapter_edit:
+			print(ytid)
+
+			row = self.db.v.select_one('*', '`ytid`=?', [ytid])
+			if row is None:
+				print("\tNot a recognized video")
+				abort = True
+				continue
+
+			row = dict(row)
+
+			# Get file name
+			fname = self.db.get_v_fname(ytid)
+			if not os.path.exists(fname):
+				print("\tNot downloaded, use --download to get the video first")
+				abort = True
+				continue
+
+			if row['chapters'] is None:
+				print("\tNo chapter information provided yet")
+			else:
+				print("\tChapter information found")
+
+			# Save data
+			dat[ytid] = dict(row)
+			dat[ytid]['path'] = fname
+
+		if abort:
+			sys.exit(-1)
+
+		print("-"*80)
+		print("Edit chapter information")
+		print()
+
+		for ytid in self.args.chapter_edit:
+			print("%s - %s" % (ytid, dat[ytid]['title']))
+
+			while True:
+				z = inputopts("\tChapters: (p)rint, (e)dit, (d)escription dump, (C)continue, (q)uit? ")
+				if z == 'p':
+					if dat[ytid]['chapters'] is None:
+						print("\tNo chapter data")
+					else:
+						chaps = dat[ytid]['chapters']
+						maxlen = 0
+						for chap in chaps:
+							maxlen = max(maxlen, len(chap[0]))
+
+						print()
+						for i,chap in enumerate(chaps):
+							print("\t\t%d) %*s -- %s" % (i+1,maxlen, chap[0], chap[1]))
+
+				elif z == 'e':
+					with tempfile.NamedTemporaryFile(mode='w+') as f:
+						f.write("# Chapter information consists of two columns separated by a tab, first column is a time stamp in HH:MM:SS format and the second column is the chapter name.\n")
+						f.write("# Every line with # is discarded.\n")
+						f.write("# Empty lines are ignored\n")
+						f.write("#\n")
+						f.write("# HH:MM:SS			Title\n")
+						f.write("\n")
+
+						if dat[ytid]['chapters'] is not None:
+							chaps = dat[ytid]['chapters']
+							print(['chaps', chaps])
+							for chap in chaps:
+								print(['chap', chap])
+								f.write("%s\t%s\n" % (chap[0],chap[1]))
+						f.seek(0)
+
+						# Edit with vim
+						subprocess.run(['vim', f.name])
+
+						# Read file contents
+						f.seek(0)
+						z = f.read()
+						z = z.split('\n')
+						z = [_ for _ in z if len(_) != 0]
+						z = [_ for _ in z if _[0] != '#']
+
+						y = []
+						for line in z:
+							parts = line.split('\t',1)
+							parts = [_.strip() for _ in parts]
+							y.append(parts)
+
+						self.db.begin()
+						if not len(y):
+							self.db.v.update({'ytid': ytid}, {'chapters': None})
+						else:
+							self.db.v.update({'ytid': ytid}, {'chapters': json.dumps(y)})
+						self.db.commit()
+						dat[ytid]['chapters'] = y
+
+				elif z == 'd':
+					fname = dat[ytid]['path']
+					iname = os.path.splitext(fname)[0] + '.info.json'
+
+					if os.path.exists(iname):
+						with open(iname) as f:
+							z = f.read()
+						z = json.loads(z)
+						print(z['description'])
+
+				elif z == 'C':
+					break
+				elif z == 'q':
+					sys.exit(0)
+				else:
+					raise ValueError("Unrecognized input: %s" % z)
+				print()
+
+	def chapterize(self):
+		dname = os.path.dirname(self.db.Filename) + '/CHAPTERIZED'
+		if not os.path.exists(dname):
+			os.mkdir(dname)
+
+		abort = False
+
+		dat = {}
+
+		print("Checking that videos are present")
+		print()
+
+		for ytid in self.args.chapterize:
+			print(ytid)
+
+			row = self.db.v.select_one('*', '`ytid`=?', [ytid])
+			if row is None:
+				print("\tNot a recognized video")
+				abort = True
+				continue
+
+			row = dict(row)
+
+			# Get file name
+			fname = self.db.get_v_fname(ytid)
+			if not os.path.exists(fname):
+				print("\tNot downloaded, use --download to get the video first")
+				abort = True
+				continue
+
+			fname_chapsmkv = dname + '/' + fname + '.chapters.mkv'
+
+			if os.path.exists(fname_chapsmkv):
+				print("\tAlready chapterized, skipping" % fname_chapsmkv)
+
+			if row['chapters'] is None:
+				print("\tNo chapter information provided yet")
+				abort = True
+
+			# Save data
+			dat[ytid] = dict(row)
+			dat[ytid]['path'] = fname
+
+		if abort:
+			sys.exit(-1)
+
+		print("-"*80)
+		print("Chapterize")
+		print()
+
+		for ytid in self.args.chapterize:
+			print("%s -- %s" % (ytid, dat[ytid]['title']))
+
+			fname = dat[ytid]['path']
+			fname_chaps = dname + '/%s.chapters.xml' % ytid
+			fname_chapsmkv = dname + '/%s.chapters.mkv' % ytid
+
+			print(dat[ytid]['chapters'])
+
+			if not os.path.exists(fname_chaps):
+				# Create chapters XML
+				cxml = mkvxmlmaker.MKVXML_chapter()
+				for v in dat[ytid]['chapters']:
+					cxml.AddChapter(v[0], v[1])
+				cxml.Save(fname_chaps)
+
+			# Add in chapter info
+			args = ['mkvmerge', '-o', fname_chapsmkv, '--chapters', fname_chaps, fname]
+			print(" ".join(args))
+			subprocess.run(args)
+
 def sync_channels_named(args, d, filt, ignore_old, rss_ok):
 	"""
 	Sync "named" channels (I don't know how else to call them) that are /c/NAME
@@ -2096,318 +2408,6 @@ def _main_download(args, d):
 
 		pushover.Client().send_message(msg, title="ydl")
 		print('notify: %s' % msg)
-
-def _main_merge_playlist(args, d):
-	dname = os.path.dirname(d.Filename) + '/MERGED'
-	if not os.path.exists(dname):
-		os.mkdir(dname)
-
-	print("Checking that all provided playlists have been completely downloaded first")
-	print()
-
-	dat = {}
-
-	abort = False
-	for ytid in args.merge_playlist:
-		print(ytid)
-		dat[ytid] = []
-
-		row = d.pl.select_one('*', '`ytid`=?', [ytid])
-		if row is None:
-			print("\tPlaylist %s not found" % ytid)
-			abort = True
-		else:
-			fname = dname + '/' + ytid + '.chapters.mkv'
-			if os.path.exists(fname):
-				print("\tEXISTS, skipping")
-			else:
-				# TODO: suspect there will be an issue with skipped videos, will skip (*snark*) that check for now
-
-				# Total length of playlist in seconds
-				totallen = 0
-
-				res = d.vids.select('*', '`name`=?', [ytid])
-				vids = [dict(_) for _ in res]
-				vids = sorted(vids, key=lambda _: _['idx'])
-
-				cnt = 0
-				for v in vids:
-					row = d.v.select_one(['duration','title'], '`ytid`=?', [v['ytid']])
-
-					path = d.get_v_fname(v['ytid'])
-					exists = os.path.exists(path)
-					if not exists:
-						print("\t%d: %s - DOES NOT EXIST" % (v['idx'], v['ytid']))
-					else:
-						print("\t%d: %s (%s) - EXISTS" % (v['idx'],v['ytid'],  sec_str(row['duration'])))
-						cnt += 1
-
-						dat[ytid].append({'ytid': v['ytid'], 'start': totallen, 'path': path, 'title': row['title']})
-
-						totallen += row['duration']
-
-				print()
-				print("%d of %d exists" % (cnt, len(vids)))
-				if cnt != len(vids):
-					print("Not all videos are downloaded, cannot merge. Do --download first.")
-					abort = True
-				else:
-					print("Expected video length: %s" % sec_str(totallen))
-
-	if abort:
-		sys.exit(-1)
-
-	print()
-	print('-'*80)
-	print("Processing playlists and merging")
-	print()
-
-	for ytid in args.merge_playlist:
-		print(ytid)
-
-		basedir = os.getcwd()
-		try:
-			os.chdir(basedir + '/MERGED')
-			fname_mkv = ytid + '.mkv'
-			fname_list = ytid + '.txt'
-			fname_chaps = ytid + '.chapters.xml'
-			fname_chapsmkv = ytid + '.chapters.mkv'
-
-			if os.path.exists(fname_chapsmkv):
-				print("\tAlready merged, skipping")
-				continue
-
-
-			if not os.path.exists(fname_list):
-				# Write list of videos to merge
-				with open(fname_list, 'w') as f:
-					for v in dat[ytid]:
-						f.write("file '%s'\n" % v['path'])
-
-			if not os.path.exists(fname_mkv):
-				# Merge videos
-				# NB: this currently transcodes to h265 as the VP9 codec has issues with invisible frames
-				args = ['ffmpeg', '-f', 'concat', '-safe', '0', '-i', fname_list, '-c:v', 'h264', '-c:a', 'copy', fname_mkv]
-				print(" ".join(args))
-				subprocess.run(args)
-
-			if not os.path.exists(fname_chaps):
-				# Create chapters XML
-				cxml = mkvxmlmaker.MKVXML_chapter()
-				for v in dat[ytid]:
-					cxml.AddChapter(sec_str(v['start']), v['title'])
-				cxml.Save(fname_chaps)
-
-			# Add in chapter info
-			args = ['mkvmerge', '-o', fname_chapsmkv, '--chapters', fname_chaps, fname_mkv]
-			print(" ".join(args))
-			subprocess.run(args)
-
-		finally:
-			os.chdir(basedir)
-		print()
-		pass
-
-	print()
-	print("-"*80)
-	print("Final file names")
-	print()
-
-	for ytid in args.merge_playlist:
-		fname_chapsmkv = ytid + '.chapters.mkv'
-
-		print(ytid)
-		print("\tMERGED/%s" % fname_chapsmkv)
-
-def _main_chapter_edit(args, d):
-	abort = False
-
-	dat = {}
-
-	print("Checking that videos are present")
-	print()
-
-	for ytid in args.chapter_edit:
-		print(ytid)
-
-		row = d.v.select_one('*', '`ytid`=?', [ytid])
-		if row is None:
-			print("\tNot a recognized video")
-			abort = True
-			continue
-
-		row = dict(row)
-
-		# Get file name
-		fname = d.get_v_fname(ytid)
-		if not os.path.exists(fname):
-			print("\tNot downloaded, use --download to get the video first")
-			abort = True
-			continue
-
-		if row['chapters'] is None:
-			print("\tNo chapter information provided yet")
-		else:
-			print("\tChapter information found")
-
-		# Save data
-		dat[ytid] = dict(row)
-		dat[ytid]['path'] = fname
-
-	if abort:
-		sys.exit(-1)
-
-	print("-"*80)
-	print("Edit chapter information")
-	print()
-
-	for ytid in args.chapter_edit:
-		print("%s - %s" % (ytid, dat[ytid]['title']))
-
-		while True:
-			z = inputopts("\tChapters: (p)rint, (e)dit, (d)escription dump, (C)continue, (q)uit? ")
-			if z == 'p':
-				if dat[ytid]['chapters'] is None:
-					print("\tNo chapter data")
-				else:
-					chaps = dat[ytid]['chapters']
-					maxlen = 0
-					for chap in chaps:
-						maxlen = max(maxlen, len(chap[0]))
-
-					print()
-					for i,chap in enumerate(chaps):
-						print("\t\t%d) %*s -- %s" % (i+1,maxlen, chap[0], chap[1]))
-
-			elif z == 'e':
-				with tempfile.NamedTemporaryFile(mode='w+') as f:
-					f.write("# Chapter information consists of two columns separated by a tab, first column is a time stamp in HH:MM:SS format and the second column is the chapter name.\n")
-					f.write("# Every line with # is discarded.\n")
-					f.write("# Empty lines are ignored\n")
-					f.write("#\n")
-					f.write("# HH:MM:SS			Title\n")
-					f.write("\n")
-
-					if dat[ytid]['chapters'] is not None:
-						chaps = dat[ytid]['chapters']
-						print(['chaps', chaps])
-						for chap in chaps:
-							print(['chap', chap])
-							f.write("%s\t%s\n" % (chap[0],chap[1]))
-					f.seek(0)
-
-					# Edit with vim
-					subprocess.run(['vim', f.name])
-
-					# Read file contents
-					f.seek(0)
-					z = f.read()
-					z = z.split('\n')
-					z = [_ for _ in z if len(_) != 0]
-					z = [_ for _ in z if _[0] != '#']
-
-					y = []
-					for line in z:
-						parts = line.split('\t',1)
-						parts = [_.strip() for _ in parts]
-						y.append(parts)
-
-					d.begin()
-					if not len(y):
-						d.v.update({'ytid': ytid}, {'chapters': None})
-					else:
-						d.v.update({'ytid': ytid}, {'chapters': json.dumps(y)})
-					d.commit()
-					dat[ytid]['chapters'] = y
-
-			elif z == 'd':
-				fname = dat[ytid]['path']
-				iname = os.path.splitext(fname)[0] + '.info.json'
-
-				if os.path.exists(iname):
-					with open(iname) as f:
-						z = f.read()
-					z = json.loads(z)
-					print(z['description'])
-
-			elif z == 'C':
-				break
-			elif z == 'q':
-				sys.exit(0)
-			else:
-				raise ValueError("Unrecognized input: %s" % z)
-			print()
-
-def _main_chapterize(args, d):
-	dname = os.path.dirname(d.Filename) + '/CHAPTERIZED'
-	if not os.path.exists(dname):
-		os.mkdir(dname)
-
-	abort = False
-
-	dat = {}
-
-	print("Checking that videos are present")
-	print()
-
-	for ytid in args.chapterize:
-		print(ytid)
-
-		row = d.v.select_one('*', '`ytid`=?', [ytid])
-		if row is None:
-			print("\tNot a recognized video")
-			abort = True
-			continue
-
-		row = dict(row)
-
-		# Get file name
-		fname = d.get_v_fname(ytid)
-		if not os.path.exists(fname):
-			print("\tNot downloaded, use --download to get the video first")
-			abort = True
-			continue
-
-		fname_chapsmkv = dname + '/' + fname + '.chapters.mkv'
-
-		if os.path.exists(fname_chapsmkv):
-			print("\tAlready chapterized, skipping" % fname_chapsmkv)
-
-		if row['chapters'] is None:
-			print("\tNo chapter information provided yet")
-			abort = True
-
-		# Save data
-		dat[ytid] = dict(row)
-		dat[ytid]['path'] = fname
-
-	if abort:
-		sys.exit(-1)
-
-	print("-"*80)
-	print("Chapterize")
-	print()
-
-	for ytid in args.chapterize:
-		print("%s -- %s" % (ytid, dat[ytid]['title']))
-
-		fname = dat[ytid]['path']
-		fname_chaps = dname + '/%s.chapters.xml' % ytid
-		fname_chapsmkv = dname + '/%s.chapters.mkv' % ytid
-
-		print(dat[ytid]['chapters'])
-
-		if not os.path.exists(fname_chaps):
-			# Create chapters XML
-			cxml = mkvxmlmaker.MKVXML_chapter()
-			for v in dat[ytid]['chapters']:
-				cxml.AddChapter(v[0], v[1])
-			cxml.Save(fname_chaps)
-
-		# Add in chapter info
-		args = ['mkvmerge', '-o', fname_chapsmkv, '--chapters', fname_chaps, fname]
-		print(" ".join(args))
-		subprocess.run(args)
 
 
 
