@@ -550,7 +550,7 @@ class YDL:
 			self.sync_list()
 
 		if self.args.sync is not False or self.args.sync_videos is not False:
-			_main_sync_videos(self.args, self.db)
+			self.sync_videos()
 
 		if self.args.update_names is not False:
 			_main_updatenames(self.args, self.db)
@@ -1339,6 +1339,17 @@ class YDL:
 		print("Update playlists")
 		sync_playlists(self.args, self.db, filt, ignore_old=self.args.ignore_old, rss_ok=(not self.args.no_rss))
 
+	def sync_videos(self):
+		filt = None
+		if type(self.args.sync) is list:			filt = self.args.sync
+		if type(self.args.sync_videos) is list:		filt = self.args.sync_videos
+
+		# I don't know how to get argparse to ignore YTID's that start with a dash, so instead use = sign and substitute now
+		filt = ['-' + _[1:] for _ in filt if _[0] == '='] + [_ for _ in filt if _[0] != '=']
+
+		print("Sync all videos")
+		sync_videos(self.db, filt, ignore_old=self.args.ignore_old)
+
 def sync_channels_named(args, d, filt, ignore_old, rss_ok):
 	"""
 	Sync "named" channels (I don't know how else to call them) that are /c/NAME
@@ -2003,17 +2014,6 @@ def _main_fuse(args, d, absolutepath):
 	print("Mounting...")
 	ydl_fuse(d, mnt, rootbase, allow_other=True)
 
-
-def _main_sync_videos(args, d):
-	filt = None
-	if type(args.sync) is list:			filt = args.sync
-	if type(args.sync_videos) is list:	filt = args.sync_videos
-
-	# I don't know how to get argparse to ignore YTID's that start with a dash, so instead use = sign and substitute now
-	filt = ['-' + _[1:] for _ in filt if _[0] == '='] + [_ for _ in filt if _[0] != '=']
-
-	print("Sync all videos")
-	sync_videos(d, filt, ignore_old=args.ignore_old)
 
 def _main_updatenames(args, d):
 	print("Updating file names to v.name or with preferred name")
