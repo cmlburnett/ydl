@@ -523,7 +523,7 @@ class YDL:
 		#	_main_stride(self.args, self.db)
 
 		if type(self.args.showpath) is list:
-			_main_showpath(self.args, self.db)
+			self.showpath()
 
 		if type(self.args.list) is list or type(self.args.listall) is list:
 			self.list()
@@ -1296,6 +1296,32 @@ class YDL:
 				ytids = [_['ytid'] for _ in sub_rows]
 				self.listall(ytids)
 
+	def showpath(self):
+		"""
+		Show paths of all the videos
+		"""
+
+		if not len(self.args.showpath):
+			raise KeyError("Must provide a channel to list, use --list to get a list of them")
+
+		where = "(`ytid` in ({0}) or `dname` in ({0}))".format(list_to_quoted_csv(self.args.showpath))
+
+		res = self.db.v.select(['rowid','ytid','dname','name','title','duration'], where)
+		rows = [dict(_) for _ in res]
+		rows = sorted(rows, key=lambda _: _['ytid'])
+
+		for row in rows:
+			path = self.db.get_v_fname(row['ytid'])
+
+			exists = os.path.exists(path)
+			if exists:
+				print("%s: E %s (%s)" % (row['ytid'],row['title'],sec_str(row['duration'])))
+			else:
+				print("%s:   %s (%s)" % (row['ytid'],row['title'],sec_str(row['duration'])))
+
+			print("\t%s" % path)
+			print()
+
 def sync_channels_named(args, d, filt, ignore_old, rss_ok):
 	"""
 	Sync "named" channels (I don't know how else to call them) that are /c/NAME
@@ -1960,31 +1986,6 @@ def _main_fuse(args, d, absolutepath):
 	print("Mounting...")
 	ydl_fuse(d, mnt, rootbase, allow_other=True)
 
-def _main_showpath(args, d):
-	"""
-	Show paths of all the videos
-	"""
-
-	if not len(args.showpath):
-		raise KeyError("Must provide a channel to list, use --list to get a list of them")
-
-	where = "(`ytid` in ({0}) or `dname` in ({0}))".format(list_to_quoted_csv(args.showpath))
-
-	res = d.v.select(['rowid','ytid','dname','name','title','duration'], where)
-	rows = [dict(_) for _ in res]
-	rows = sorted(rows, key=lambda _: _['ytid'])
-
-	for row in rows:
-		path = d.get_v_fname(row['ytid'])
-
-		exists = os.path.exists(path)
-		if exists:
-			print("%s: E %s (%s)" % (row['ytid'],row['title'],sec_str(row['duration'])))
-		else:
-			print("%s:   %s (%s)" % (row['ytid'],row['title'],sec_str(row['duration'])))
-
-		print("\t%s" % path)
-		print()
 
 def _main_sync_list(args, d):
 	filt = None
