@@ -516,7 +516,7 @@ class YDL:
 		self.open_db()
 
 		if self.args.fuse:
-			_main_fuse(self.args, self.db, self.args.fuse_absolute)
+			self.fuse()
 			sys.exit()
 
 		#if type(self.args.stride) is list:
@@ -1350,6 +1350,44 @@ class YDL:
 		print("Sync all videos")
 		sync_videos(self.db, filt, ignore_old=self.args.ignore_old)
 
+	def fuse(self):
+		# Get mount point
+		mnt = self.args.fuse[0]
+
+		# Absolute path it
+		mnt = os.path.abspath(mnt)
+
+		# Determine what to prepend to the symlink paths
+		if self.args.fuse_absolute:
+			rootbase = os.path.abspath( os.path.dirname(self.db.Filename) )
+		else:
+			# Get absolute path of the YDL database
+			fpath = os.path.abspath(self.args.file)
+			# Get the directory that file is in
+			fpath = os.path.dirname(fpath)
+
+			# Get the absolute path of the mount point
+			root = os.path.abspath(self.args.fuse[0])
+
+			# Get the relative path from the
+			rootbase = os.path.relpath(fpath, root)
+
+		if not os.path.exists(mnt):
+			print("Path %s does not exist" % mnt)
+			sys.exit(-1)
+
+		s = os.stat(mnt)
+		if not stat.S_ISDIR(s.st_mode):
+			print("Path %s is not a directory" % mnt)
+			sys.exit(-1)
+
+		print("Mounting YDL database as a FUSE filesystem")
+		print("\tDB: %s" % os.path.abspath(self.args.file))
+		print("\tMount: %s" % os.path.abspath(mnt))
+		print("Enter ctrl-c to quit and unmount")
+		print("Mounting...")
+		ydl_fuse(self.db, mnt, rootbase, allow_other=True)
+
 def sync_channels_named(args, d, filt, ignore_old, rss_ok):
 	"""
 	Sync "named" channels (I don't know how else to call them) that are /c/NAME
@@ -1974,45 +2012,6 @@ def _download_video_known(d, ytid, row, alias):
 		'utime': _now()
 	}
 	return dat
-
-def _main_fuse(args, d, absolutepath):
-	# Get mount point
-	mnt = args.fuse[0]
-
-	# Absolute path it
-	mnt = os.path.abspath(mnt)
-
-
-	# Determine what to prepend to the symlink paths
-	if absolutepath:
-		rootbase = os.path.abspath( os.path.dirname(d.Filename) )
-	else:
-		# Get absolute path of the YDL database
-		fpath = os.path.abspath(args.file)
-		# Get the directory that file is in
-		fpath = os.path.dirname(fpath)
-
-		# Get the absolute path of the mount point
-		root = os.path.abspath(args.fuse[0])
-
-		# Get the relative path from the
-		rootbase = os.path.relpath(fpath, root)
-
-	if not os.path.exists(mnt):
-		print("Path %s does not exist" % mnt)
-		sys.exit(-1)
-
-	s = os.stat(mnt)
-	if not stat.S_ISDIR(s.st_mode):
-		print("Path %s is not a directory" % mnt)
-		sys.exit(-1)
-
-	print("Mounting YDL database as a FUSE filesystem")
-	print("\tDB: %s" % os.path.abspath(args.file))
-	print("\tMount: %s" % os.path.abspath(mnt))
-	print("Enter ctrl-c to quit and unmount")
-	print("Mounting...")
-	ydl_fuse(d, mnt, rootbase, allow_other=True)
 
 
 def _main_updatenames(args, d):
