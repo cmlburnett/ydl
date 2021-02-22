@@ -430,6 +430,10 @@ def _rename_files(dname, ytid, newname, old_dname=None):
 
 
 class YDL:
+	"""
+	Class to contain the functionality of the stand-alone main part of this library.
+	"""
+
 	def __init__(self):
 		pass
 
@@ -1328,16 +1332,74 @@ class YDL:
 		if type(self.args.sync_list) is list:	filt = self.args.sync_list
 
 		print("Update users")
-		sync_users(self.args, self.db, filt, ignore_old=self.args.ignore_old, rss_ok=(not self.args.no_rss))
+		self.sync_user(filt)
 
 		print("Update unnamed channels")
-		sync_channels_unnamed(self.args, self.db, filt, ignore_old=self.args.ignore_old, rss_ok=(not self.args.no_rss))
+		self.sync_ch(filt)
 
 		print("Update named channels")
-		sync_channels_named(self.args, self.db, filt, ignore_old=self.args.ignore_old, rss_ok=(not self.args.no_rss))
+		self.sync_c(filt)
 
 		print("Update playlists")
-		sync_playlists(self.args, self.db, filt, ignore_old=self.args.ignore_old, rss_ok=(not self.args.no_rss))
+		self.sync_pl(filt)
+
+	def sync_user(self, filt):
+		"""
+		Sync user videos
+
+		Use the database object @d to sync users.
+		If @ignore_old is True then skip those that have been sync'ed before.
+
+		If @rss_ok is True then RSS is attempted, otherwise the list is pulled down
+		As RSS feeds don't contain the entire history of a list, it is only good for incremental changes.
+		"""
+
+		_sync_list(self.args, self.db, self.db.u, filt, 'name', self.args.ignore_old, (not self.args.no_rss), ydl.get_list_user)
+
+	def sync_c(self, filt):
+		"""
+		Sync "named" channels (I don't know how else to call them) that are /c/NAME
+		as opposed to "unnamed" channels that are at /channel/NAME
+		I don't know the difference but they are not interchangeable.
+
+		Use the database object @d to sync all named channels.
+		If @ignore_old is True then skip those that have been sync'ed before.
+
+		If @rss_ok is True then RSS is attempted, otherwise the list is pulled down
+		As RSS feeds don't contain the entire history of a list, it is only good for incremental changes.
+		"""
+
+		_sync_list(self.args, self.db, self.db.c, filt, 'name', self.args.ignore_old, (not self.args.no_rss), ydl.get_list_c)
+
+	def sync_ch(self, filt):
+		"""
+		Sync "unnamed" channels (I don't know how else to call them) that are /channel/NAME
+		as opposed to "named" channels that are at /c/NAME
+		I don't know the difference but they are not interchangeable.
+
+		Use the database object @d to sync all named channels.
+		If @ignore_old is True then skip those that have been sync'ed before.
+
+		If @rss_ok is True then RSS is attempted, otherwise the list is pulled down
+		As RSS feeds don't contain the entire history of a list, it is only good for incremental changes.
+		"""
+
+		_sync_list(self.args, self.db, self.db.ch, filt, 'name', self.args.ignore_old, (not self.args.no_rss), ydl.get_list_channel)
+
+	def sync_pl(self, filt):
+		"""
+		Sync all playlists.
+
+		Use the database object @d to sync all playlists.
+		If @ignore_old is True then skip those that have been sync'ed before.
+
+		@rss_ok is disregarded as playlists don't have RSS feeds; listed to provide consistency (maybe they will change in the future?)
+		"""
+
+		# Not applicable to playlists (no RSS)
+		rss_ok = False
+
+		_sync_list(self.args, self.db, self.db.pl, filt, 'ytid', self.args.ignore_old, rss_ok, ydl.get_list_playlist)
 
 	def sync_videos(self):
 		filt = None
@@ -1782,64 +1844,6 @@ class YDL:
 
 			pushover.Client().send_message(msg, title="ydl")
 			print('notify: %s' % msg)
-
-def sync_channels_named(args, d, filt, ignore_old, rss_ok):
-	"""
-	Sync "named" channels (I don't know how else to call them) that are /c/NAME
-	as opposed to "unnamed" channels that are at /channel/NAME
-	I don't know the difference but they are not interchangeable.
-
-	Use the database object @d to sync all named channels.
-	If @ignore_old is True then skip those that have been sync'ed before.
-
-	If @rss_ok is True then RSS is attempted, otherwise the list is pulled down
-	As RSS feeds don't contain the entire history of a list, it is only good for incremental changes.
-	"""
-
-	_sync_list(args, d, d.c, filt, 'name', ignore_old, rss_ok, ydl.get_list_c)
-
-def sync_users(args, d, filt, ignore_old, rss_ok):
-	"""
-	Sync user videos
-
-	Use the database object @d to sync users.
-	If @ignore_old is True then skip those that have been sync'ed before.
-
-	If @rss_ok is True then RSS is attempted, otherwise the list is pulled down
-	As RSS feeds don't contain the entire history of a list, it is only good for incremental changes.
-	"""
-
-	_sync_list(args, d, d.u, filt, 'name', ignore_old, rss_ok, ydl.get_list_user)
-
-def sync_channels_unnamed(args, d, filt, ignore_old, rss_ok):
-	"""
-	Sync "unnamed" channels (I don't know how else to call them) that are /channel/NAME
-	as opposed to "named" channels that are at /c/NAME
-	I don't know the difference but they are not interchangeable.
-
-	Use the database object @d to sync all named channels.
-	If @ignore_old is True then skip those that have been sync'ed before.
-
-	If @rss_ok is True then RSS is attempted, otherwise the list is pulled down
-	As RSS feeds don't contain the entire history of a list, it is only good for incremental changes.
-	"""
-
-	_sync_list(args, d, d.ch, filt, 'name', ignore_old, rss_ok, ydl.get_list_channel)
-
-def sync_playlists(args, d, filt, ignore_old, rss_ok):
-	"""
-	Sync all playlists.
-
-	Use the database object @d to sync all playlists.
-	If @ignore_old is True then skip those that have been sync'ed before.
-
-	@rss_ok is disregarded as playlists don't have RSS feeds; listed to provide consistency (maybe they will change in the future?)
-	"""
-
-	# Not applicable to playlists (no RSS)
-	rss_ok = False
-
-	_sync_list(args, d, d.pl, filt, 'ytid', ignore_old, rss_ok, ydl.get_list_playlist)
 
 def _sync_list(args, d, d_sub, filt, col_name, ignore_old, rss_ok, ydl_func):
 	"""
