@@ -1430,7 +1430,12 @@ class YDL:
 		}
 
 		try:
-			_sync_videos(self.db, self.args.ignore_old, summary, rows)
+			# Iterate over videos
+			for i,row in enumerate(rows):
+				# print to the screen to show progress
+				print("\t%d of %d: %s" % (i+1,len(rows), row['ytid']))
+				self.sync_video(row, summary)
+
 		except KeyboardInterrupt:
 			# Don't show exception
 			return
@@ -1446,6 +1451,63 @@ class YDL:
 			print("Other errors (%d):" % len(summary['error']))
 			for ytid in summary['error']:
 				print("\t%s" % ytid)
+
+	def sync_video(self, row, summary):
+		ytid = row['ytid']
+		rowid = row['rowid']
+		ctime = row['ctime']
+		skip = row['skip']
+
+		# If instructed to skip, then skip
+		# This can be done if the video is on a playlist, etc that is not available to download
+		if skip:
+			print("\t\tSkipping")
+			# This marks it as at least looked at, otherwise repeated --sync --ignore-old will keep checking
+			self.db.v.update({"rowid": rowid}, {"atime": _now()})
+			return None
+
+		# Get video information
+		try:
+			ret = ydl.get_info_video(ytid)
+		except KeyboardInterrupt:
+			# Pass it down
+			raise
+		except ydl.PaymentRequiredException:
+			summary['paymentreq'].append(ytid)
+			return None
+		except Exception as e:
+			traceback.print_exc()
+			summary['error'].append(ytid)
+			return None
+
+		# Squash non-ASCII characters (I don't like emoji in file names)
+		name = db.title_to_name(ret['title'])
+
+		# Format
+		atime = _now()
+		if ctime is None:
+			ctime = atime
+
+		# Aggregate data
+		dat = {
+			'ytid': ytid,
+			'duration': ret['duration'],
+			'title': ret['title'],
+			'name': name,
+			'uploader': ret['uploader'],
+			'thumbnails': json.dumps(ret['thumbnails']),
+			'ptime': datetime.datetime.strptime(ret['upload_date'], "%Y%m%d"),
+			'ctime': ctime,
+			'atime': atime,
+		}
+
+		# Do actual update
+		self.db.begin()
+		self.db.v.update({'rowid': rowid}, dat)
+		self.db.commit()
+
+		# Got it
+		summary['done'].append(ytid)
 
 	def fuse(self):
 		# Get mount point
@@ -2148,68 +2210,6 @@ def __sync_list_full(args, d, d_sub, rows, f_get_list, summary, c_name, c_name_a
 		summary['error'].append(c_name)
 		# Continue onward, ignore errors
 		d.rollback()
-
-def _sync_videos(d, ignore_old, summary, rows):
-	# Iterate over videos
-	for i,row in enumerate(rows):
-		ytid = row['ytid']
-		rowid = row['rowid']
-		ctime = row['ctime']
-		skip = row['skip']
-
-		# print to the screen to show progress
-		print("\t%d of %d: %s" % (i+1,len(rows), ytid))
-
-		# If instructed to skip, then skip
-		# This can be done if the video is on a playlist, etc that is not available to download
-		if skip:
-			print("\t\tSkipping")
-			# This marks it as at least looked at, otherwise repeated --sync --ignore-old will keep checking
-			d.v.update({"rowid": rowid}, {"atime": _now()})
-			continue
-
-		# Get video information
-		try:
-			ret = ydl.get_info_video(ytid)
-		except KeyboardInterrupt:
-			# Pass it down
-			raise
-		except ydl.PaymentRequiredException:
-			summary['paymentreq'].append(ytid)
-			continue
-		except Exception as e:
-			traceback.print_exc()
-			summary['error'].append(ytid)
-			continue
-
-		# Squash non-ASCII characters (I don't like emoji in file names)
-		name = db.title_to_name(ret['title'])
-
-		# Format
-		atime = _now()
-		if ctime is None:
-			ctime = atime
-
-		# Aggregate data
-		dat = {
-			'ytid': ytid,
-			'duration': ret['duration'],
-			'title': ret['title'],
-			'name': name,
-			'uploader': ret['uploader'],
-			'thumbnails': json.dumps(ret['thumbnails']),
-			'ptime': datetime.datetime.strptime(ret['upload_date'], "%Y%m%d"),
-			'ctime': ctime,
-			'atime': atime,
-		}
-
-		# Do actual update
-		d.begin()
-		d.v.update({'rowid': rowid}, dat)
-		d.commit()
-
-		# Got it
-		summary['done'].append(ytid)
 
 def download_videos(d, filt, ignore_old):
 	# Get total number of videos in the database
