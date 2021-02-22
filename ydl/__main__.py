@@ -541,7 +541,7 @@ class YDL:
 			self.name()
 
 		if type(self.args.alias) is list:
-			_main_alias(self.args, self.db)
+			self.alias()
 
 		if type(self.args.info) is list:
 			self.info()
@@ -887,6 +887,95 @@ class YDL:
 
 		else:
 			print("Too many arguments")
+
+	def alias(self):
+		if len(self.args.alias) == 0:
+			res = self.db.ch.select(['rowid','name','alias'])
+			rows = [dict(_) for _ in res]
+			print("Existing channels:")
+			for row in rows:
+				if row['alias'] is None:
+					print("\t%s" % row['name'])
+				else:
+					print("\t%s -> %s" % (row['name'], row['alias']))
+		elif len(self.args.alias) == 1:
+			row = self.db.ch.select_one(['name','alias'], "`name`=? or `alias`=?", [args.alias[0], args.alias[0]])
+			print("Channel: %s" % row['name'])
+			print("Alias: %s" % row['alias'])
+
+		elif len(self.args.alias) == 2:
+			res = self.db.ch.select('*', '`name`=?', [self.args.alias[1]])
+			rows = [dict(_) for _ in res]
+			if len(rows):
+				raise ValueError("Alias name already used for an unnamed channel: %s" % rows[0]['name'])
+
+			res = self.db.ch.select('*', '`alias`=?', [self.args.alias[1]])
+			rows = [dict(_) for _ in res]
+			if len(rows):
+				if rows[0]['name'] == self.args.alias[0]:
+					# Renaming to same alias
+					sys.exit()
+				else:
+					raise ValueError("Alias name already used for an unnamed channel: %s" % rows[0]['name'])
+
+			res = self.db.c.select('*', '`name`=?', [self.args.alias[1]])
+			rows = [dict(_) for _ in res]
+			if len(rows):
+				raise ValueError("Alias name already used for an named channel: %s" % rows[0]['name'])
+
+			res = self.db.u.select('*', '`name`=?', [self.args.alias[1]])
+			rows = [dict(_) for _ in res]
+			if len(rows):
+				raise ValueError("Alias name already used for a user: %s" % rows[0]['name'])
+
+
+
+			pref = db.alias_coerce(self.args.alias[1])
+			if pref != self.args.alias[1]:
+				raise KeyError("Alias '%s' is not valid" % self.args.name[1])
+
+			row = self.db.ch.select_one(['rowid','alias'], '`name`=?', [self.args.alias[0]])
+			if row is None:
+				raise ValueError("No channel by %s" % self.args.alias[0])
+
+			# Used for updating vids table
+			old_name = self.args.alias[0]
+
+
+			# Old and new directory names
+			old = os.getcwd() + '/' + self.args.alias[0]
+			new = os.getcwd() + '/' + pref
+
+			# If long ch.name exists on the filesystem then move it to the alias
+			if os.path.exists(old):
+				os.rename(old, new)
+
+			# If prior ch.alias exists then move it to the new alias
+			else:
+				# Nope, not there either
+				if row['alias'] is None:
+					print("No channel directory exists at '%s', making new" % old)
+					os.mkdir(new)
+
+				# Move from old to new alias
+				else:
+					old_name = row['alias']
+
+					old = os.getcwd() + '/' + row['alias']
+					new = os.getcwd() + '/' + pref
+
+					if os.path.exists(old):
+						os.rename(old, new)
+
+			# Add/update alias to channel
+			self.db.begin()
+			self.db.ch.update({'rowid': row['rowid']}, {'alias': pref})
+			self.db.v.update({'dname': args.alias[0]}, {'dname': pref})
+			self.db.vids.update({'name': old_name}, {'name': pref})
+			self.db.commit()
+
+		else:
+			print("Too many variables")
 
 def sync_channels_named(args, d, filt, ignore_old, rss_ok):
 	"""
@@ -1896,95 +1985,6 @@ def _main_add(args, d):
 
 	d.commit()
 
-
-def _main_alias(args, d):
-	if len(args.alias) == 0:
-		res = d.ch.select(['rowid','name','alias'])
-		rows = [dict(_) for _ in res]
-		print("Existing channels:")
-		for row in rows:
-			if row['alias'] is None:
-				print("\t%s" % row['name'])
-			else:
-				print("\t%s -> %s" % (row['name'], row['alias']))
-	elif len(args.alias) == 1:
-		row = d.ch.select_one(['name','alias'], "`name`=? or `alias`=?", [args.alias[0], args.alias[0]])
-		print("Channel: %s" % row['name'])
-		print("Alias: %s" % row['alias'])
-
-	elif len(args.alias) == 2:
-		res = d.ch.select('*', '`name`=?', [args.alias[1]])
-		rows = [dict(_) for _ in res]
-		if len(rows):
-			raise ValueError("Alias name already used for an unnamed channel: %s" % rows[0]['name'])
-
-		res = d.ch.select('*', '`alias`=?', [args.alias[1]])
-		rows = [dict(_) for _ in res]
-		if len(rows):
-			if rows[0]['name'] == args.alias[0]:
-				# Renaming to same alias
-				sys.exit()
-			else:
-				raise ValueError("Alias name already used for an unnamed channel: %s" % rows[0]['name'])
-
-		res = d.c.select('*', '`name`=?', [args.alias[1]])
-		rows = [dict(_) for _ in res]
-		if len(rows):
-			raise ValueError("Alias name already used for an named channel: %s" % rows[0]['name'])
-
-		res = d.u.select('*', '`name`=?', [args.alias[1]])
-		rows = [dict(_) for _ in res]
-		if len(rows):
-			raise ValueError("Alias name already used for a user: %s" % rows[0]['name'])
-
-
-
-		pref = db.alias_coerce(args.alias[1])
-		if pref != args.alias[1]:
-			raise KeyError("Alias '%s' is not valid" % args.name[1])
-
-		row = d.ch.select_one(['rowid','alias'], '`name`=?', [args.alias[0]])
-		if row is None:
-			raise ValueError("No channel by %s" % args.alias[0])
-
-		# Used for updating vids table
-		old_name = args.alias[0]
-
-
-		# Old and new directory names
-		old = os.getcwd() + '/' + args.alias[0]
-		new = os.getcwd() + '/' + pref
-
-		# If long ch.name exists on the filesystem then move it to the alias
-		if os.path.exists(old):
-			os.rename(old, new)
-
-		# If prior ch.alias exists then move it to the new alias
-		else:
-			# Nope, not there either
-			if row['alias'] is None:
-				print("No channel directory exists at '%s', making new" % old)
-				os.mkdir(new)
-
-			# Move from old to new alias
-			else:
-				old_name = row['alias']
-
-				old = os.getcwd() + '/' + row['alias']
-				new = os.getcwd() + '/' + pref
-
-				if os.path.exists(old):
-					os.rename(old, new)
-
-		# Add/update alias to channel
-		d.begin()
-		d.ch.update({'rowid': row['rowid']}, {'alias': pref})
-		d.v.update({'dname': args.alias[0]}, {'dname': pref})
-		d.vids.update({'name': old_name}, {'name': pref})
-		d.commit()
-
-	else:
-		print("Too many variables")
 
 
 def _main_sync_list(args, d):
