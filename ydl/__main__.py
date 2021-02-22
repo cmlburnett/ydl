@@ -631,6 +631,8 @@ class YDL:
 					sys.exit(-1)
 				urls.append( ('ch', q[2]) )
 
+			# FIXME: if something like https://youtube.com/foo passed it is silently ignored
+			# need to catch un-matched URLs and error (ie, terminal else clause here)
 
 		self.db.begin()
 
