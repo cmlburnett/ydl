@@ -927,8 +927,6 @@ def download_videos(d, filt, ignore_old):
 			# Use name if there happens to be one that is present with atime being null
 			if row['name']:
 				dname,fname = db.format_v_names(row['dname'], row['name'], alias, row['ytid'])
-				# Have to escape the percent signs
-				fname = fname.replace('%', '%%')
 			else:
 				# If no name is present, use TEMP
 				dname,fname = db.format_v_names(row['dname'], 'TEMP', alias, row['ytid'])
