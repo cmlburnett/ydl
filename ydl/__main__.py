@@ -1402,6 +1402,11 @@ class YDL:
 		_sync_list(self.args, self.db, self.db.pl, filt, 'ytid', self.args.ignore_old, rss_ok, ydl.get_list_playlist)
 
 	def sync_videos(self):
+		"""
+		Sync all videos in the database @d and if @ignore_old is True then don't sync
+		those videos that have been sync'ed before.
+		"""
+
 		filt = None
 		if type(self.args.sync) is list:			filt = self.args.sync
 		if type(self.args.sync_videos) is list:		filt = self.args.sync_videos
@@ -1410,7 +1415,37 @@ class YDL:
 		filt = ['-' + _[1:] for _ in filt if _[0] == '='] + [_ for _ in filt if _[0] != '=']
 
 		print("Sync all videos")
-		sync_videos(self.db, filt, ignore_old=self.args.ignore_old)
+		# Get videos
+		res = self.db.get_v(filt, self.args.ignore_old)
+
+		# Convert rows to dictionaries
+		rows = [dict(_) for _ in res]
+		# Sort by YTID to be consistent
+		rows = sorted(rows, key=lambda x: x['ytid'])
+
+		summary = {
+			'done': [],
+			'error': [],
+			'paymentreq': [],
+		}
+
+		try:
+			_sync_videos(self.db, self.args.ignore_old, summary, rows)
+		except KeyboardInterrupt:
+			# Don't show exception
+			return
+		finally:
+			print()
+			print()
+			print()
+			print("Total videos: %d" % len(rows))
+			print("Completed: %d" % len(summary['done']))
+			print("Payment required (%d):" % len(summary['paymentreq']))
+			for ytid in summary['paymentreq']:
+				print("\t%s" % ytid)
+			print("Other errors (%d):" % len(summary['error']))
+			for ytid in summary['error']:
+				print("\t%s" % ytid)
 
 	def fuse(self):
 		# Get mount point
@@ -2005,7 +2040,6 @@ def __sync_list(args, d, d_sub, rows, f_get_list, summary):
 			# Fetch full list
 			__sync_list_full(args, d, d_sub, rows, f_get_list, summary,   c_name, c_name_alt, new)
 
-
 def __sync_list_full(args, d, d_sub, rows, f_get_list, summary, c_name, c_name_alt, new):
 	"""
 	Fetch the full list
@@ -2114,44 +2148,6 @@ def __sync_list_full(args, d, d_sub, rows, f_get_list, summary, c_name, c_name_a
 		summary['error'].append(c_name)
 		# Continue onward, ignore errors
 		d.rollback()
-
-def sync_videos(d, filt, ignore_old):
-	"""
-	Sync all videos in the database @d and if @ignore_old is True then don't sync
-	those videos that have been sync'ed before.
-	"""
-
-	# Get videos
-	res = d.get_v(filt, ignore_old)
-
-	# Convert rows to dictionaries
-	rows = [dict(_) for _ in res]
-	# Sort by YTID to be consistent
-	rows = sorted(rows, key=lambda x: x['ytid'])
-
-	summary = {
-		'done': [],
-		'error': [],
-		'paymentreq': [],
-	}
-
-	try:
-		_sync_videos(d, ignore_old, summary, rows)
-	except KeyboardInterrupt:
-		# Don't show exception
-		return
-	finally:
-		print()
-		print()
-		print()
-		print("Total videos: %d" % len(rows))
-		print("Completed: %d" % len(summary['done']))
-		print("Payment required (%d):" % len(summary['paymentreq']))
-		for ytid in summary['paymentreq']:
-			print("\t%s" % ytid)
-		print("Other errors (%d):" % len(summary['error']))
-		for ytid in summary['error']:
-			print("\t%s" % ytid)
 
 def _sync_videos(d, ignore_old, summary, rows):
 	# Iterate over videos
