@@ -547,7 +547,7 @@ class YDL:
 			self.info()
 
 		if self.args.sync is not False or self.args.sync_list is not False:
-			_main_sync_list(self.args, self.db)
+			self.sync_list()
 
 		if self.args.sync is not False or self.args.sync_videos is not False:
 			_main_sync_videos(self.args, self.db)
@@ -1322,6 +1322,23 @@ class YDL:
 			print("\t%s" % path)
 			print()
 
+	def sync_list(self):
+		filt = None
+		if type(self.args.sync) is list:		filt = self.args.sync
+		if type(self.args.sync_list) is list:	filt = self.args.sync_list
+
+		print("Update users")
+		sync_users(self.args, self.db, filt, ignore_old=self.args.ignore_old, rss_ok=(not self.args.no_rss))
+
+		print("Update unnamed channels")
+		sync_channels_unnamed(self.args, self.db, filt, ignore_old=self.args.ignore_old, rss_ok=(not self.args.no_rss))
+
+		print("Update named channels")
+		sync_channels_named(self.args, self.db, filt, ignore_old=self.args.ignore_old, rss_ok=(not self.args.no_rss))
+
+		print("Update playlists")
+		sync_playlists(self.args, self.db, filt, ignore_old=self.args.ignore_old, rss_ok=(not self.args.no_rss))
+
 def sync_channels_named(args, d, filt, ignore_old, rss_ok):
 	"""
 	Sync "named" channels (I don't know how else to call them) that are /c/NAME
@@ -1986,23 +2003,6 @@ def _main_fuse(args, d, absolutepath):
 	print("Mounting...")
 	ydl_fuse(d, mnt, rootbase, allow_other=True)
 
-
-def _main_sync_list(args, d):
-	filt = None
-	if type(args.sync) is list:			filt = args.sync
-	if type(args.sync_list) is list:	filt = args.sync_list
-
-	print("Update users")
-	sync_users(args, d, filt, ignore_old=args.ignore_old, rss_ok=(not args.no_rss))
-
-	print("Update unnamed channels")
-	sync_channels_unnamed(args, d, filt, ignore_old=args.ignore_old, rss_ok=(not args.no_rss))
-
-	print("Update named channels")
-	sync_channels_named(args, d, filt, ignore_old=args.ignore_old, rss_ok=(not args.no_rss))
-
-	print("Update playlists")
-	sync_playlists(args, d, filt, ignore_old=args.ignore_old, rss_ok=(not args.no_rss))
 
 def _main_sync_videos(args, d):
 	filt = None
