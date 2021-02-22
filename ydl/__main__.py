@@ -1560,7 +1560,7 @@ def _main_add(args, d):
 
 		if u.path.startswith('/user/'):
 			q = u.path.split('/')
-			if len(q) != 3:
+			if len(q) != 3 and (len(q) == 4 and q[-1] != ''):
 				print(url)
 				print("\t" + "User URL expected to have a name after /user/")
 				sys.exit(-1)
@@ -1568,7 +1568,7 @@ def _main_add(args, d):
 
 		if u.path.startswith('/c/'):
 			q = u.path.split('/')
-			if len(q) != 3:
+			if len(q) != 3 and (len(q) == 4 and q[-1] != ''):
 				print(url)
 				print("\t" + "Channel URL expected to have a channel name after /c/")
 				sys.exit(-1)
@@ -1576,7 +1576,7 @@ def _main_add(args, d):
 
 		if u.path.startswith('/channel/'):
 			q = u.path.split('/')
-			if len(q) != 3:
+			if len(q) != 3 and (len(q) == 4 and q[-1] != ''):
 				print(url)
 				print("\t" + "Channel URL expected to have a channel name after /channel/")
 				sys.exit(-1)
