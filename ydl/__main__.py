@@ -529,7 +529,7 @@ class YDL:
 			_main_list(self.args, self.db)
 
 		if type(self.args.add) is list:
-			_main_add(self.args, self.db)
+			self.add()
 
 		if self.args.skip is not None:
 			self.skip()
@@ -566,6 +566,133 @@ class YDL:
 
 		if self.args.chapterize is not False:
 			_main_chapterize(self.args, self.db)
+
+	def add(self):
+		# Processing list of URLs
+		urls = []
+
+		if self.args.stdin:
+			vals = [_.strip() for _ in sys.stdin.readlines()]
+		else:
+			vals = self.args.add
+
+		for url in vals:
+			u = urllib.parse.urlparse(url)
+
+			if u.scheme != 'https':
+				print(url)
+				print("\t" + "URL only recognized if https")
+				sys.exit(-1)
+
+			if u.netloc not in ('www.youtube.com', 'youtube.com', 'youtu.be'):
+				print(url)
+				print("\t" + "URL not at a recognized host")
+				sys.exit(-1)
+
+			if u.path == '/watch':
+				# Expect u.query to be 'v=XXXXXXXXXXX'
+				q = urllib.parse.parse_qs(u.query)
+				if 'v' not in q:
+					print(url)
+					print("\t" + "Watch URL expected to have a v=XXXXXX query string")
+					sys.exit(-1)
+				urls.append( ('v', q['v'][0]) )
+
+			if u.path == '/playlist':
+				# Expect u.query to be 'list=XXXXXXXXXXXXXXXXXXX'
+				q = urllib.parse.parse_qs(u.query)
+				if 'list' not in q:
+					print(url)
+					print("\t" + "Playlist URL expected to have a list=XXXXXX query string")
+					sys.exit(-1)
+				urls.append( ('p', q['list'][0]) )
+
+			if u.path.startswith('/user/'):
+				q = u.path.split('/')
+				if len(q) != 3 and (len(q) == 4 and q[-1] != ''):
+					print(url)
+					print("\t" + "User URL expected to have a name after /user/")
+					sys.exit(-1)
+				urls.append( ('u', q[2]) )
+
+			if u.path.startswith('/c/'):
+				q = u.path.split('/')
+				if len(q) != 3 and (len(q) == 4 and q[-1] != ''):
+					print(url)
+					print("\t" + "Channel URL expected to have a channel name after /c/")
+					sys.exit(-1)
+				urls.append( ('c', q[2]) )
+
+			if u.path.startswith('/channel/'):
+				q = u.path.split('/')
+				if len(q) != 3 and (len(q) == 4 and q[-1] != ''):
+					print(url)
+					print("\t" + "Channel URL expected to have a channel name after /channel/")
+					sys.exit(-1)
+				urls.append( ('ch', q[2]) )
+
+
+		self.db.begin()
+
+		for i,u in enumerate(urls):
+			print("%d of %d: %s" % (i+1, len(urls), u[1]))
+
+			if u[0] == 'v':
+				o = self.db.get_video(u[1])
+				if o:
+					print("\tFound")
+				else:
+					print("\tNot found")
+					self.db.add_video(u[1], "MISCELLANEOUS")
+					print("\tAdded")
+
+			elif u[0] == 'u':
+				o = self.db.get_user(u[1])
+				if o:
+					print("\tFound")
+				else:
+					print("\tNot found")
+					self.db.add_user(u[1])
+					if not os.path.exists(u[1]):
+						os.mkdir(u[1])
+					print("\tAdded")
+
+			elif u[0] == 'p':
+				o = self.db.get_playlist(u[1])
+				if o:
+					print("\tFound")
+				else:
+					print("\tNot found")
+					self.db.add_playlist(u[1])
+					if not os.path.exists(u[1]):
+						os.mkdir(u[1])
+					print("\tAdded")
+
+			elif u[0] == 'c':
+				o = self.db.get_channel_named(u[1])
+				if o:
+					print("\tFound")
+				else:
+					print("\tNot found")
+					self.db.add_channel_named(u[1])
+					os.mkdir(u[1])
+					print("\tAdded")
+
+			elif u[0] == 'ch':
+				o = self.db.get_channel_unnamed(u[1])
+				if o:
+					print("\tFound")
+				else:
+					print("\tNot found")
+					self.db.add_channel_unnamed(u[1])
+					if not os.path.exists(u[1]):
+						os.mkdir(u[1])
+					print("\tAdded")
+
+			else:
+				raise ValueError("Unrecognize URL type %s" % (u,))
+
+		self.db.commit()
 
 
 	def info(self):
@@ -1857,135 +1984,6 @@ def _main_list_pl(args, d):
 		if type(args.listall) is list:
 			ytids = [_['ytid'] for _ in sub_rows]
 			_main_listall(args, d, ytids)
-
-def _main_add(args, d):
-	# Processing list of URLs
-	urls = []
-
-	if args.stdin:
-		vals = [_.strip() for _ in sys.stdin.readlines()]
-	else:
-		vals = args.add
-
-	for url in vals:
-		u = urllib.parse.urlparse(url)
-
-		if u.scheme != 'https':
-			print(url)
-			print("\t" + "URL only recognized if https")
-			sys.exit(-1)
-
-		if u.netloc not in ('www.youtube.com', 'youtube.com', 'youtu.be'):
-			print(url)
-			print("\t" + "URL not at a recognized host")
-			sys.exit(-1)
-
-		if u.path == '/watch':
-			# Expect u.query to be 'v=XXXXXXXXXXX'
-			q = urllib.parse.parse_qs(u.query)
-			if 'v' not in q:
-				print(url)
-				print("\t" + "Watch URL expected to have a v=XXXXXX query string")
-				sys.exit(-1)
-			urls.append( ('v', q['v'][0]) )
-
-		if u.path == '/playlist':
-			# Expect u.query to be 'list=XXXXXXXXXXXXXXXXXXX'
-			q = urllib.parse.parse_qs(u.query)
-			if 'list' not in q:
-				print(url)
-				print("\t" + "Playlist URL expected to have a list=XXXXXX query string")
-				sys.exit(-1)
-			urls.append( ('p', q['list'][0]) )
-
-		if u.path.startswith('/user/'):
-			q = u.path.split('/')
-			if len(q) != 3 and (len(q) == 4 and q[-1] != ''):
-				print(url)
-				print("\t" + "User URL expected to have a name after /user/")
-				sys.exit(-1)
-			urls.append( ('u', q[2]) )
-
-		if u.path.startswith('/c/'):
-			q = u.path.split('/')
-			if len(q) != 3 and (len(q) == 4 and q[-1] != ''):
-				print(url)
-				print("\t" + "Channel URL expected to have a channel name after /c/")
-				sys.exit(-1)
-			urls.append( ('c', q[2]) )
-
-		if u.path.startswith('/channel/'):
-			q = u.path.split('/')
-			if len(q) != 3 and (len(q) == 4 and q[-1] != ''):
-				print(url)
-				print("\t" + "Channel URL expected to have a channel name after /channel/")
-				sys.exit(-1)
-			urls.append( ('ch', q[2]) )
-
-
-	d.begin()
-
-	for i,u in enumerate(urls):
-		print("%d of %d: %s" % (i+1, len(urls), u[1]))
-
-		if u[0] == 'v':
-			o = d.get_video(u[1])
-			if o:
-				print("\tFound")
-			else:
-				print("\tNot found")
-				d.add_video(u[1], "MISCELLANEOUS")
-				print("\tAdded")
-
-		elif u[0] == 'u':
-			o = d.get_user(u[1])
-			if o:
-				print("\tFound")
-			else:
-				print("\tNot found")
-				d.add_user(u[1])
-				if not os.path.exists(u[1]):
-					os.mkdir(u[1])
-				print("\tAdded")
-
-		elif u[0] == 'p':
-			o = d.get_playlist(u[1])
-			if o:
-				print("\tFound")
-			else:
-				print("\tNot found")
-				d.add_playlist(u[1])
-				if not os.path.exists(u[1]):
-					os.mkdir(u[1])
-				print("\tAdded")
-
-		elif u[0] == 'c':
-			o = d.get_channel_named(u[1])
-			if o:
-				print("\tFound")
-			else:
-				print("\tNot found")
-				d.add_channel_named(u[1])
-				os.mkdir(u[1])
-				print("\tAdded")
-
-		elif u[0] == 'ch':
-			o = d.get_channel_unnamed(u[1])
-			if o:
-				print("\tFound")
-			else:
-				print("\tNot found")
-				d.add_channel_unnamed(u[1])
-				if not os.path.exists(u[1]):
-					os.mkdir(u[1])
-				print("\tAdded")
-
-		else:
-			raise ValueError("Unrecognize URL type %s" % (u,))
-
-	d.commit()
-
-
 
 def _main_sync_list(args, d):
 	filt = None
