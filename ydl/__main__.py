@@ -553,10 +553,10 @@ class YDL:
 			self.sync_videos()
 
 		if self.args.update_names is not False:
-			_main_updatenames(self.args, self.db)
+			self.updatenames()
 
 		if self.args.download is not False:
-			_main_download(self.args, self.db)
+			self.download()
 
 		if self.args.merge_playlist is not False:
 			self.merge_playlist()
@@ -1700,6 +1700,89 @@ class YDL:
 			print(" ".join(args))
 			subprocess.run(args)
 
+	def updatenames(self):
+		print("Updating file names to v.name or with preferred name")
+
+		where = '`skip`=0'
+		if type(self.args.update_names) is list:
+			# Filter
+			where += " AND (`ytid` in ({0}) or `dname` in ({0}))".format( list_to_quoted_csv(self.args.update_names) )
+
+		res = self.db.v.select(['rowid','ytid','dname','name'], where)
+
+		basedir = os.getcwd()
+
+		summary = {
+			'same': [],
+			'change': [],
+		}
+
+		rows = [dict(_) for _ in res]
+		for i,row in enumerate(rows):
+			ytid = row['ytid']
+			dname = row['dname']
+			name = row['name']
+			if name is None:
+				name = 'TEMP'
+
+			# Get preferred name, if one is set
+			sub_row = self.db.vnames.select_one('name', '`ytid`=?', [ytid])
+			if sub_row:
+				name = sub_row['name']
+
+			print("\t%d of %d: %s" % (i+1, len(rows), row['ytid']))
+
+			# Find everything with that YTID (glob ignores dot files)
+			renamed = _rename_files(dname, ytid, name)
+			if renamed:
+				summary['change'].append(ytid)
+			else:
+				summary['same'].append(ytid)
+
+		print("Same: %d" % len(summary['same']))
+		print("Changed: %d" % len(summary['change']))
+
+	def download(self):
+		filt = []
+		if type(self.args.download) is list and len(self.args.download):
+			filt = self.args.download
+			# I don't know how to get argparse to ignore YTID's that start with a dash, so instead use = sign and substitute now
+			filt = ['-' + _[1:] for _ in filt if _[0] == '='] + [_ for _ in filt if _[0] != '=']
+
+		print("Download videos")
+		try:
+			ret = download_videos(self.db, filt, ignore_old=self.args.ignore_old)
+		except Exception as e:
+			ret = sys.exc_info()
+
+		# Send notificaiton via Pushover
+		if self.args.notify:
+			# Send osmething useful but short
+			msg = ",".join(filt)
+			if len(msg) > 32:
+				msg = msg[:32] + '...'
+
+			if ret == True:
+				msg = "Download completed: %s" % msg
+
+			elif ret == False:
+				msg = "Download aborted: %s" % msg
+
+			elif type(ret) is tuple:
+				traceback.print_exception(*ret)
+
+				errmsg = str(ret[1])
+				if len(errmsg) > 32:
+					errmsg = errmsg[:32] + '...'
+
+				msg = "Dwonload aborted with exception (%s) for %s" % (errmsg, msg)
+			else:
+				print([type(ret), ret])
+				msg = "Download something: %s" % msg
+
+			pushover.Client().send_message(msg, title="ydl")
+			print('notify: %s' % msg)
+
 def sync_channels_named(args, d, filt, ignore_old, rss_ok):
 	"""
 	Sync "named" channels (I don't know how else to call them) that are /c/NAME
@@ -2325,89 +2408,6 @@ def _download_video_known(d, ytid, row, alias):
 	}
 	return dat
 
-
-def _main_updatenames(args, d):
-	print("Updating file names to v.name or with preferred name")
-
-	where = '`skip`=0'
-	if type(args.update_names) is list:
-		# Filter
-		where += " AND (`ytid` in ({0}) or `dname` in ({0}))".format( list_to_quoted_csv(args.update_names) )
-
-	res = d.v.select(['rowid','ytid','dname','name'], where)
-
-	basedir = os.getcwd()
-
-	summary = {
-		'same': [],
-		'change': [],
-	}
-
-	rows = [dict(_) for _ in res]
-	for i,row in enumerate(rows):
-		ytid = row['ytid']
-		dname = row['dname']
-		name = row['name']
-		if name is None:
-			name = 'TEMP'
-
-		# Get preferred name, if one is set
-		sub_row = d.vnames.select_one('name', '`ytid`=?', [ytid])
-		if sub_row:
-			name = sub_row['name']
-
-		print("\t%d of %d: %s" % (i+1, len(rows), row['ytid']))
-
-		# Find everything with that YTID (glob ignores dot files)
-		renamed = _rename_files(dname, ytid, name)
-		if renamed:
-			summary['change'].append(ytid)
-		else:
-			summary['same'].append(ytid)
-
-	print("Same: %d" % len(summary['same']))
-	print("Changed: %d" % len(summary['change']))
-
-def _main_download(args, d):
-	filt = []
-	if type(args.download) is list and len(args.download):
-		filt = args.download
-		# I don't know how to get argparse to ignore YTID's that start with a dash, so instead use = sign and substitute now
-		filt = ['-' + _[1:] for _ in filt if _[0] == '='] + [_ for _ in filt if _[0] != '=']
-
-	print("Download videos")
-	try:
-		ret = download_videos(d, filt, ignore_old=args.ignore_old)
-	except Exception as e:
-		ret = sys.exc_info()
-
-	# Send notificaiton via Pushover
-	if args.notify:
-		# Send osmething useful but short
-		msg = ",".join(filt)
-		if len(msg) > 32:
-			msg = msg[:32] + '...'
-
-		if ret == True:
-			msg = "Download completed: %s" % msg
-
-		elif ret == False:
-			msg = "Download aborted: %s" % msg
-
-		elif type(ret) is tuple:
-			traceback.print_exception(*ret)
-
-			errmsg = str(ret[1])
-			if len(errmsg) > 32:
-				errmsg = errmsg[:32] + '...'
-
-			msg = "Dwonload aborted with exception (%s) for %s" % (errmsg, msg)
-		else:
-			print([type(ret), ret])
-			msg = "Download something: %s" % msg
-
-		pushover.Client().send_message(msg, title="ydl")
-		print('notify: %s' % msg)
 
 
 
