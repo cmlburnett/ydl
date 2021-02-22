@@ -544,7 +544,7 @@ class YDL:
 			_main_alias(self.args, self.db)
 
 		if type(self.args.info) is list:
-			_main_info(self.args, self.db)
+			self.info()
 
 		if self.args.sync is not False or self.args.sync_list is not False:
 			_main_sync_list(self.args, self.db)
@@ -566,6 +566,192 @@ class YDL:
 
 		if self.args.chapterize is not False:
 			_main_chapterize(self.args, self.db)
+
+
+	def info(self):
+		if not len(self.args.info):
+			self.info_db()
+		else:
+			self.info_videos()
+
+	def info_db(self):
+		print("Database information")
+
+		print("\tFile: %s" % self.db.Filename)
+
+		print()
+
+		cs = self.db.c.num_rows()
+		chs = self.db.ch.num_rows()
+		us = self.db.u.num_rows()
+		pls = self.db.pl.num_rows()
+
+		print("\tNamed channels: %d" % cs)
+		print("\tUnnamed channels: %d" % chs)
+		print("\tUsers: %d" % us)
+		print("\tPlaylists: %d" % pls)
+
+		total = vs = self.db.v.num_rows()
+		print("\tVideos: %d" % vs)
+		vs = self.db.v.num_rows('`skip`=1')
+		print("\t\tSkipped: %d" % vs)
+		vs = self.db.v.num_rows('`utime` is not null')
+		print("\t\tDownloaded: %d (%.2f%%)" % (vs,100*vs/total))
+		vs = self.db.vnames.num_rows()
+		print("\t\tWith preferred names: %d" % vs)
+
+		row = self.db.execute("select sum(duration) as duration from v").fetchone()
+		days = row['duration'] / (60*60*24.0)
+		print("\t\tTotal duration: %s (%.2f days)" % (sec_str(row['duration']), days))
+
+		print("Calculating disk space used...")
+
+		args = ['du', '-b', '-s', os.path.dirname(self.db.Filename)]
+		s = subprocess.run(args, stdout=subprocess.PIPE)
+		line = s.stdout.decode('ascii').split()
+		sz = int(line[0])
+		print("\t%d bytes (%s)" % (sz, bytes_to_str(sz)))
+
+	def info_videos(self):
+		ytids = self.args.info
+		print("Showing information for videos (%d):" % len(ytids))
+
+		# I don't know how to get argparse to ignore YTID's that start with a dash, so instead use = sign and substitute now
+		ytids = ['-' + _[1:] for _ in ytids if _[0] == '='] + [_ for _ in ytids if _[0] != '=']
+
+		for ytid in ytids:
+			row = self.db.v.select_one('*', '`ytid`=?', [ytid])
+			if row is not None:
+				self.info_v(ytid, row)
+				continue
+
+			# Check if named channel
+			row = self.db.c.select_one('*', '`name`=?', [ytid])
+			if row is not None:
+				print("\tNamed channel %s:" % ytid)
+				rows = self.db.v.select('*', '`dname`=?', [ytid])
+				rows = [dict(_) for _ in rows]
+				rows = sorted(rows, key=lambda x: x['ytid'])
+
+				row = self.db.execute("select sum(duration) as duration from v where `dname`=?", (ytid,)).fetchone()
+				days = row['duration'] / (60*60*24.0)
+				print("\t\tTotal duration: %s (%.2f days)" % (sec_str(row['duration']), days))
+				print()
+
+				for row in rows:
+					self.info_v(row['ytid'], row)
+
+				# Don't, next @ytids entry
+				continue
+
+			# Check if unnamed channel
+			row = self.db.ch.select_one('*', '`name`=? or `alias`=?', [ytid,ytid])
+			if row is not None:
+				print("\tUnnamed channel %s:" % ytid)
+				rows = self.db.v.select('*', '`dname`=?', [ytid])
+				rows = [dict(_) for _ in rows]
+				rows = sorted(rows, key=lambda x: x['ytid'])
+
+				row = self.db.execute("select sum(duration) as duration from v where `dname`=?", (ytid,)).fetchone()
+				days = row['duration'] / (60*60*24.0)
+				print("\t\tTotal duration: %s (%.2f days)" % (sec_str(row['duration']), days))
+				print()
+
+				for row in rows:
+					self.info_v(row['ytid'], row)
+
+				# Don't, next @ytids entry
+				continue
+
+			# Check if user
+			row = self.db.u.select_one('*', '`name`=?', [ytid])
+			if row is not None:
+				print("\tUser %s:" % ytid)
+				rows = self.db.v.select('*', '`dname`=?', [ytid])
+				rows = [dict(_) for _ in rows]
+				rows = sorted(rows, key=lambda x: x['ytid'])
+
+				row = self.db.execute("select sum(duration) as duration from v where `dname`=?", (ytid,)).fetchone()
+				days = row['duration'] / (60*60*24.0)
+				print("\t\tTotal duration: %s (%.2f days)" % (sec_str(row['duration']), days))
+				print()
+
+				for row in rows:
+					self.info_v(row['ytid'], row)
+
+				# Don't, next @ytids entry
+				continue
+
+			# Check if playlist
+			row = self.db.pl.select_one('*', '`ytid`=?', [ytid])
+			if row is not None:
+				print("\tPlaylist %s:" % ytid)
+				rows = self.db.v.select('*', '`dname`=?', [ytid])
+				rows = [dict(_) for _ in rows]
+				rows = sorted(rows, key=lambda x: x['ytid'])
+
+				row = self.db.execute("select sum(duration) as duration from v where `dname`=?", (ytid,)).fetchone()
+				if row['duration'] is None:
+					duration = 0
+					days = 0.0
+				else:
+					duration = row['duration']
+					days = duration / (60*60*24.0)
+
+				print("\t\tTotal duration: %s (%.2f days)" % (sec_str(duration), days))
+				print()
+
+				for row in rows:
+					self.info_v(row['ytid'], row)
+
+				# Don't, next @ytids entry
+				continue
+
+			print("\t%s -- NOT FOUND" % ytid)
+
+	def info_v(self, ytid, row):
+		row = self.db.v.select_one('*', '`ytid`=?', [ytid])
+		if row is None:
+			print("\t\tNot found")
+			return
+
+		path = db.format_v_fname(row['dname'], row['name'], None, ytid, 'mkv')
+		exists = os.path.exists(path)
+		size = None
+		if exists:
+			size = os.stat(path).st_size
+			size = '%s (%d bytes)' % (bytes_to_str(size), size)
+		else:
+			size = ''
+
+		dur = None
+		if row['duration']:
+			dur = sec_str(row['duration'])
+
+		inf = [
+			['YTID', row['ytid']],
+			['Title', row['title']],
+			['Duration (HH:MM:SS)', dur],
+			['Name', row['name']],
+			['Directory Name', row['dname']],
+			['Uploader', row['uploader']],
+			['Upload Time', row['ptime']],
+			['Creation Time', row['ctime']],
+			['Access Time', row['atime']],
+			['Update Time', row['utime']],
+			['Skip?', row['skip']],
+			['Path', path],
+			['Exists?', exists],
+			['Size', size],
+		]
+
+		# Get maximum length of the keys
+		maxlen = max( [len(_[0]) for _ in inf] )
+
+		# Print out the information
+		for k,v in inf:
+			print('\t\t' + ("%0" + str(maxlen) + "s: %s") % (k,v))
+		print()
 
 def sync_channels_named(args, d, filt, ignore_old, rss_ok):
 	"""
@@ -1800,191 +1986,6 @@ def _main_alias(args, d):
 
 	else:
 		print("Too many variables")
-
-def _main_info(args, d):
-	if not len(args.info):
-		_main_info_db(args, d)
-	else:
-		_main_info_videos(args, d)
-
-def _main_info_db(args, d):
-	print("Database information")
-
-	print("\tFile: %s" % d.Filename)
-
-	print()
-
-	cs = d.c.num_rows()
-	chs = d.ch.num_rows()
-	us = d.u.num_rows()
-	pls = d.pl.num_rows()
-
-	print("\tNamed channels: %d" % cs)
-	print("\tUnnamed channels: %d" % chs)
-	print("\tUsers: %d" % us)
-	print("\tPlaylists: %d" % pls)
-
-	total = vs = d.v.num_rows()
-	print("\tVideos: %d" % vs)
-	vs = d.v.num_rows('`skip`=1')
-	print("\t\tSkipped: %d" % vs)
-	vs = d.v.num_rows('`utime` is not null')
-	print("\t\tDownloaded: %d (%.2f%%)" % (vs,100*vs/total))
-	vs = d.vnames.num_rows()
-	print("\t\tWith preferred names: %d" % vs)
-
-	row = d.execute("select sum(duration) as duration from v").fetchone()
-	days = row['duration'] / (60*60*24.0)
-	print("\t\tTotal duration: %s (%.2f days)" % (sec_str(row['duration']), days))
-
-	print("Calculating disk space used...")
-
-	args = ['du', '-b', '-s', os.path.dirname(d.Filename)]
-	s = subprocess.run(args, stdout=subprocess.PIPE)
-	line = s.stdout.decode('ascii').split()
-	sz = int(line[0])
-	print("\t%d bytes (%s)" % (sz, bytes_to_str(sz)))
-
-def _main_info_videos(args, d):
-	ytids = args.info
-	print("Showing information for videos (%d):" % len(ytids))
-
-	# I don't know how to get argparse to ignore YTID's that start with a dash, so instead use = sign and substitute now
-	ytids = ['-' + _[1:] for _ in ytids if _[0] == '='] + [_ for _ in ytids if _[0] != '=']
-
-	for ytid in ytids:
-		row = d.v.select_one('*', '`ytid`=?', [ytid])
-		if row is not None:
-			_main_info_v(args, d, ytid, row)
-			continue
-
-		# Check if named channel
-		row = d.c.select_one('*', '`name`=?', [ytid])
-		if row is not None:
-			print("\tNamed channel %s:" % ytid)
-			rows = d.v.select('*', '`dname`=?', [ytid])
-			rows = [dict(_) for _ in rows]
-			rows = sorted(rows, key=lambda x: x['ytid'])
-
-			row = d.execute("select sum(duration) as duration from v where `dname`=?", (ytid,)).fetchone()
-			days = row['duration'] / (60*60*24.0)
-			print("\t\tTotal duration: %s (%.2f days)" % (sec_str(row['duration']), days))
-			print()
-
-			for row in rows:
-				_main_info_v(args, d, row['ytid'], row)
-
-			# Don't, next @ytids entry
-			continue
-
-		# Check if unnamed channel
-		row = d.ch.select_one('*', '`name`=? or `alias`=?', [ytid,ytid])
-		if row is not None:
-			print("\tUnnamed channel %s:" % ytid)
-			rows = d.v.select('*', '`dname`=?', [ytid])
-			rows = [dict(_) for _ in rows]
-			rows = sorted(rows, key=lambda x: x['ytid'])
-
-			row = d.execute("select sum(duration) as duration from v where `dname`=?", (ytid,)).fetchone()
-			days = row['duration'] / (60*60*24.0)
-			print("\t\tTotal duration: %s (%.2f days)" % (sec_str(row['duration']), days))
-			print()
-
-			for row in rows:
-				_main_info_v(args, d, row['ytid'], row)
-
-			# Don't, next @ytids entry
-			continue
-
-		# Check if user
-		row = d.u.select_one('*', '`name`=?', [ytid])
-		if row is not None:
-			print("\tUser %s:" % ytid)
-			rows = d.v.select('*', '`dname`=?', [ytid])
-			rows = [dict(_) for _ in rows]
-			rows = sorted(rows, key=lambda x: x['ytid'])
-
-			row = d.execute("select sum(duration) as duration from v where `dname`=?", (ytid,)).fetchone()
-			days = row['duration'] / (60*60*24.0)
-			print("\t\tTotal duration: %s (%.2f days)" % (sec_str(row['duration']), days))
-			print()
-
-			for row in rows:
-				_main_info_v(args, d, row['ytid'], row)
-
-			# Don't, next @ytids entry
-			continue
-
-		# Check if playlist
-		row = d.pl.select_one('*', '`ytid`=?', [ytid])
-		if row is not None:
-			print("\tPlaylist %s:" % ytid)
-			rows = d.v.select('*', '`dname`=?', [ytid])
-			rows = [dict(_) for _ in rows]
-			rows = sorted(rows, key=lambda x: x['ytid'])
-
-			row = d.execute("select sum(duration) as duration from v where `dname`=?", (ytid,)).fetchone()
-			if row['duration'] is None:
-				duration = 0
-				days = 0.0
-			else:
-				duration = row['duration']
-				days = duration / (60*60*24.0)
-
-			print("\t\tTotal duration: %s (%.2f days)" % (sec_str(duration), days))
-			print()
-
-			for row in rows:
-				_main_info_v(args, d, row['ytid'], row)
-
-			# Don't, next @ytids entry
-			continue
-
-		print("\t%s -- NOT FOUND" % ytid)
-
-def _main_info_v(args, d, ytid, row):
-	row = d.v.select_one('*', '`ytid`=?', [ytid])
-	if row is None:
-		print("\t\tNot found")
-		return
-
-	path = db.format_v_fname(row['dname'], row['name'], None, ytid, 'mkv')
-	exists = os.path.exists(path)
-	size = None
-	if exists:
-		size = os.stat(path).st_size
-		size = '%s (%d bytes)' % (bytes_to_str(size), size)
-	else:
-		size = ''
-
-	dur = None
-	if row['duration']:
-		dur = sec_str(row['duration'])
-
-	inf = [
-		['YTID', row['ytid']],
-		['Title', row['title']],
-		['Duration (HH:MM:SS)', dur],
-		['Name', row['name']],
-		['Directory Name', row['dname']],
-		['Uploader', row['uploader']],
-		['Upload Time', row['ptime']],
-		['Creation Time', row['ctime']],
-		['Access Time', row['atime']],
-		['Update Time', row['utime']],
-		['Skip?', row['skip']],
-		['Path', path],
-		['Exists?', exists],
-		['Size', size],
-	]
-
-	# Get maximum length of the keys
-	maxlen = max( [len(_[0]) for _ in inf] )
-
-	# Print out the information
-	for k,v in inf:
-		print('\t\t' + ("%0" + str(maxlen) + "s: %s") % (k,v))
-	print()
 
 
 def _main_sync_list(args, d):
