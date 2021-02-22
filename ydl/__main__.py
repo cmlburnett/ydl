@@ -429,6 +429,140 @@ def _rename_files(dname, ytid, newname, old_dname=None):
 	return renamed
 
 
+class YDL:
+	def __init__(self):
+		pass
+
+	def process_args(self):
+		"""Process sys.argv and put into self.args"""
+		self.args = self._get_args()
+
+		# Do any argument pre-processing here
+		if self.args.debug == 'debug':		logging.basicConfig(level=logging.DEBUG)
+		elif self.args.debug == 'info':		logging.basicConfig(level=logging.INFO)
+		elif self.args.debug == 'warning':	logging.basicConfig(level=logging.WARNING)
+		elif self.args.debug == 'error':	logging.basicConfig(level=logging.ERROR)
+		elif self.args.debug == 'critical':	logging.basicConfig(level=logging.CRITICAL)
+		else:
+			raise ValueError("Unrecognized logging level '%s'" % self.args.debug)
+
+		if self.args.notify:
+			if not os.path.exists(PUSHOVER_CFG_FILE):
+				print("Unable to send notifications because there is no ~/.pushoverrc configuration file")
+				print("Aborting.")
+				sys.exit(-1)
+
+			if pushover is None:
+				print("Unable to send notifications because pushover is not installed: sudo pip3 install pushover")
+				print("Aborting.")
+				sys.exit(-1)
+
+	def _get_args(self):
+		"""Get arguments and return ArgumentParser.parse_args() object"""
+
+		p = argparse.ArgumentParser()
+		p.add_argument('-f', '--file', default='ydl.db', help="use sqlite3 FILE (default ydl.db)")
+		p.add_argument('--stdin', action='store_true', default=False, help="Accept input on STDIN for parameters instead of arguments")
+		p.add_argument('--debug', choices=('debug','info','warning','error','critical'), default='error', help="Set logging level")
+
+		p.add_argument('--add', nargs='*', default=False, help="Add URL(s) to download")
+		p.add_argument('--name', nargs='*', default=False, help="Supply a YTID and file name to manually specify it")
+		p.add_argument('--alias', nargs='*', default=False, help="Add an alias for unnamed channels")
+		p.add_argument('--list', nargs='*', default=False, help="List of lists")
+		p.add_argument('--listall', nargs='*', default=False, help="Same as --list but will list all the videos too")
+		p.add_argument('--showpath', nargs='*', default=False, help="Show file paths for the given channels or YTID's")
+		p.add_argument('--skip', nargs='*', help="Skip the specified videos (supply no ids to get a list of skipped)")
+		p.add_argument('--unskip', nargs='*', help="Un-skip the specified videos (supply no ids to get a list of not skipped)")
+		p.add_argument('--info', nargs='*', default=False, help="Print out information about the video")
+
+		p.add_argument('--json', action='store_true', default=False, help="Dump output as JSON")
+		p.add_argument('--xml', action='store_true', default=False, help="Dump output as XML")
+		p.add_argument('--force', action='store_true', default=False, help="Force the action, whatever it may pertain to")
+		p.add_argument('--no-rss', action='store_true', default=False, help="Don't use RSS to check status of lists")
+
+		#p.add_argument('--stride', nargs='+', default=False, help="Set the stride on a list. If not set, all videos will be stored in the same directory. If a stride of 10 is set, then all videos will be spread across 10 sub-directories. Stride of one stores all videos in one directory.")
+
+		p.add_argument('--sync', nargs='*', default=False, help="Sync all metadata and playlists (does not download video data)")
+		p.add_argument('--sync-list', nargs='*', default=False, help="Sync just the lists (not videos)")
+		p.add_argument('--sync-videos', nargs='*', default=False, help="Sync just the videos (not lists)")
+		p.add_argument('--ignore-old', action='store_true', default=False, help="Ignore old list items and old videos")
+		p.add_argument('--download', nargs='*', default=False, help="Download video")
+		p.add_argument('--update-names', nargs='*', default=False, help="Check and update file names to match v.name values (needed if title changed on YouTube after download)")
+
+		p.add_argument('--fuse', nargs=1, help="Initiate FUSE file system fronted by the specified database, provide path to mount to")
+		p.add_argument('--fuse-absolute', action='store_true', default=False, help="Sym links are relative by default, pass this to make them absolute paths")
+
+		p.add_argument('--notify', default=False, action='store_true', help="Send a Pushover notification when completed; uses ~/.pushoverrc for config")
+
+		p.add_argument('--merge-playlist', default=False, nargs='+', help="Merge a playlist into a single video file with each video entry as a chapter")
+
+		p.add_argument('--chapter-edit', default=False, nargs=1, help="Edit chapters for the given video file")
+		p.add_argument('--chapterize', default=False, nargs='+', help="Add chapters to a file. Must use --chapter-edit first to provide chapter information, then --chapterize the video.")
+
+		return p.parse_args()
+
+	def main(self):
+		""" Main function called from invoking the library """
+
+		self.process_args()
+
+		d = db(os.getcwd() + '/' + self.args.file)
+		d.open()
+
+		_main_manual(self.args, d)
+
+		if self.args.fuse:
+			_main_fuse(self.args, d, self.args.fuse_absolute)
+			sys.exit()
+
+		#if type(self.args.stride) is list:
+		#	_main_stride(self.args, d)
+
+		if type(self.args.showpath) is list:
+			_main_showpath(self.args, d)
+
+		if type(self.args.list) is list or type(self.args.listall) is list:
+			_main_list(self.args, d)
+
+		if type(self.args.add) is list:
+			_main_add(self.args, d)
+
+		if self.args.skip is not None:
+			_main_skip(self.args, d)
+
+		if self.args.unskip is not None:
+			_main_unskip(self.args, d)
+
+		if type(self.args.name) is list:
+			_main_name(self.args, d)
+
+		if type(self.args.alias) is list:
+			_main_alias(self.args, d)
+
+		if type(self.args.info) is list:
+			_main_info(self.args, d)
+
+		if self.args.sync is not False or self.args.sync_list is not False:
+			_main_sync_list(self.args, d)
+
+		if self.args.sync is not False or self.args.sync_videos is not False:
+			_main_sync_videos(self.args, d)
+
+		if self.args.update_names is not False:
+			_main_updatenames(self.args, d)
+
+		if self.args.download is not False:
+			_main_download(self.args, d)
+
+		if self.args.merge_playlist is not False:
+			_main_merge_playlist(self.args, d)
+
+		if self.args.chapter_edit is not False:
+			_main_chapter_edit(self.args, d)
+
+		if self.args.chapterize is not False:
+			_main_chapterize(self.args, d)
+
 def sync_channels_named(args, d, filt, ignore_old, rss_ok):
 	"""
 	Sync "named" channels (I don't know how else to call them) that are /c/NAME
@@ -1053,120 +1187,6 @@ def _download_video_known(d, ytid, row, alias):
 		'utime': _now()
 	}
 	return dat
-
-def _main():
-	""" Main function called from invoking the library """
-
-	p = argparse.ArgumentParser()
-	p.add_argument('-f', '--file', default='ydl.db', help="use sqlite3 FILE (default ydl.db)")
-	p.add_argument('--stdin', action='store_true', default=False, help="Accept input on STDIN for parameters instead of arguments")
-	p.add_argument('--debug', choices=('debug','info','warning','error','critical'), default='error', help="Set logging level")
-
-	p.add_argument('--add', nargs='*', default=False, help="Add URL(s) to download")
-	p.add_argument('--name', nargs='*', default=False, help="Supply a YTID and file name to manually specify it")
-	p.add_argument('--alias', nargs='*', default=False, help="Add an alias for unnamed channels")
-	p.add_argument('--list', nargs='*', default=False, help="List of lists")
-	p.add_argument('--listall', nargs='*', default=False, help="Same as --list but will list all the videos too")
-	p.add_argument('--showpath', nargs='*', default=False, help="Show file paths for the given channels or YTID's")
-	p.add_argument('--skip', nargs='*', help="Skip the specified videos (supply no ids to get a list of skipped)")
-	p.add_argument('--unskip', nargs='*', help="Un-skip the specified videos (supply no ids to get a list of not skipped)")
-	p.add_argument('--info', nargs='*', default=False, help="Print out information about the video")
-
-	p.add_argument('--json', action='store_true', default=False, help="Dump output as JSON")
-	p.add_argument('--xml', action='store_true', default=False, help="Dump output as XML")
-	p.add_argument('--force', action='store_true', default=False, help="Force the action, whatever it may pertain to")
-	p.add_argument('--no-rss', action='store_true', default=False, help="Don't use RSS to check status of lists")
-
-	p.add_argument('--sync', nargs='*', default=False, help="Sync all metadata and playlists (does not download video data)")
-	p.add_argument('--sync-list', nargs='*', default=False, help="Sync just the lists (not videos)")
-	p.add_argument('--sync-videos', nargs='*', default=False, help="Sync just the videos (not lists)")
-	p.add_argument('--ignore-old', action='store_true', default=False, help="Ignore old list items and old videos")
-	p.add_argument('--download', nargs='*', default=False, help="Download video")
-	p.add_argument('--update-names', nargs='*', default=False, help="Check and update file names to match v.name values (needed if title changed on YouTube after download)")
-
-	p.add_argument('--fuse', nargs=1, help="Initiate FUSE file system fronted by the specified database, provide path to mount to")
-	p.add_argument('--fuse-absolute', action='store_true', default=False, help="Sym links are relative by default, pass this to make them absolute paths")
-
-	p.add_argument('--notify', default=False, action='store_true', help="Send a Pushover notification when completed; uses ~/.pushoverrc for config")
-
-	p.add_argument('--merge-playlist', default=False, nargs='+', help="Merge a playlist into a single video file with each video entry as a chapter")
-
-	p.add_argument('--chapter-edit', default=False, nargs=1, help="Edit chapters for the given video file")
-	p.add_argument('--chapterize', default=False, nargs='+', help="Add chapters to a file. Must use --chapter-edit first to provide chapter information, then --chapterize the video.")
-
-	args = p.parse_args()
-
-	if args.debug == 'debug':		logging.basicConfig(level=logging.DEBUG)
-	elif args.debug == 'info':		logging.basicConfig(level=logging.INFO)
-	elif args.debug == 'warning':	logging.basicConfig(level=logging.WARNING)
-	elif args.debug == 'error':		logging.basicConfig(level=logging.ERROR)
-	elif args.debug == 'critical':	logging.basicConfig(level=logging.CRITICAL)
-	else:
-		raise ValueError("Unrecognized logging level '%s'" % args.debug)
-
-	if args.notify:
-		if not os.path.exists(PUSHOVER_CFG_FILE):
-			print("Unable to send notifications because there is no ~/.pushoverrc configuration file")
-			print("Aborting.")
-			sys.exit(-1)
-
-		if pushover is None:
-			print("Unable to send notifications because pushover is not installed: sudo pip3 install pushover")
-			print("Aborting.")
-			sys.exit(-1)
-
-	d = db(os.getcwd() + '/' + args.file)
-	d.open()
-
-	_main_manual(args, d)
-
-	if args.fuse:
-		_main_fuse(args, d, args.fuse_absolute)
-		sys.exit()
-	if type(args.showpath) is list:
-		_main_showpath(args, d)
-
-	if type(args.list) is list or type(args.listall) is list:
-		_main_list(args, d)
-
-	if type(args.add) is list:
-		_main_add(args, d)
-
-	if args.skip is not None:
-		_main_skip(args, d)
-
-	if args.unskip is not None:
-		_main_unskip(args, d)
-
-	if type(args.name) is list:
-		_main_name(args, d)
-
-	if type(args.alias) is list:
-		_main_alias(args, d)
-
-	if type(args.info) is list:
-		_main_info(args, d)
-
-	if args.sync is not False or args.sync_list is not False:
-		_main_sync_list(args, d)
-
-	if args.sync is not False or args.sync_videos is not False:
-		_main_sync_videos(args, d)
-
-	if args.update_names is not False:
-		_main_updatenames(args, d)
-
-	if args.download is not False:
-		_main_download(args, d)
-
-	if args.merge_playlist is not False:
-		_main_merge_playlist(args, d)
-
-	if args.chapter_edit is not False:
-		_main_chapter_edit(args, d)
-
-	if args.chapterize is not False:
-		_main_chapterize(args, d)
 
 def _main_manual(args, d):
 	"""
@@ -2483,5 +2503,6 @@ def _main_chapterize(args, d):
 
 
 if __name__ == '__main__':
-	_main()
+	y = YDL()
+	y.main()
 
