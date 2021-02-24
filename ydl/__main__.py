@@ -263,7 +263,7 @@ class db(SH):
 		return db.format_v_fname(row['dname'], row['name'], alias, ytid, suffix)
 
 	@classmethod
-	def format_v_names(cls, dname, name, alias, ytid, suffix='mkv'):
+	def format_v_names(cls, dname, name, alias, ytid, suffix=None):
 		if alias is None:
 			fname = name
 		else:
@@ -2308,7 +2308,7 @@ def _download_video_TEMP(d, ytid, row, alias):
 		# If no name is present, use TEMP
 		dname,fname = db.format_v_names(row['dname'], 'TEMP', alias, row['ytid'])
 
-	# Make subdir if it doesn't exist
+	# Make subdir if it doesn't exist (this should have been done with --add)
 	if not os.path.exists(dname):
 		os.mkdir(dname)
 
