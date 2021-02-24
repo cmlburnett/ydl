@@ -263,7 +263,7 @@ class db(SH):
 		return db.format_v_fname(row['dname'], row['name'], alias, ytid, suffix)
 
 	@classmethod
-	def format_v_names(cls, dname, name, alias, ytid, suffix=None):
+	def format_v_names(cls, dname, name, alias, ytid, suffix='mkv'):
 		if alias is None:
 			fname = name
 		else:
@@ -2365,7 +2365,6 @@ def _download_video_TEMP(d, ytid, row, alias):
 		# This is not ideal (prefer the human friendly channel name but can't get that from
 		# info.json file at this time) so use just the channel ID
 		dat['dname'] = ret['channel_id']
-		print('dat', dat)
 
 		try:
 			_rename_files(dat['dname'], ytid, name, old_dname=row['dname'])
