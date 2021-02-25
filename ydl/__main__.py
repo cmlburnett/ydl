@@ -2101,9 +2101,9 @@ def __sync_list(args, d, d_sub, rows, f_get_list, summary):
 			continue
 		else:
 			# Fetch full list
-			__sync_list_full(args, d, d_sub, rows, f_get_list, summary,   c_name, c_name_alt, new)
+			__sync_list_full(args, d, d_sub, f_get_list, summary,   c_name, c_name_alt, new)
 
-def __sync_list_full(args, d, d_sub, rows, f_get_list, summary, c_name, c_name_alt, new):
+def __sync_list_full(args, d, d_sub, f_get_list, summary, c_name, c_name_alt, new):
 	"""
 	Fetch the full list
 
@@ -2114,7 +2114,6 @@ def __sync_list_full(args, d, d_sub, rows, f_get_list, summary, c_name, c_name_a
 	@args -- argparse result object
 	@d -- database object
 	@d_sub -- database table object for this particular list
-	@rows -- list of items to sync, tuple of (name, rss_ok)
 	@f_get_list -- function in ydl library to call to get list of videos
 	@summary -- dictionary to store results of syncing each list
 	@c_name -- column name that uniquely identifies the list (eg, c.name, ch.name, u.name, pl.ytid)
