@@ -1996,7 +1996,8 @@ def _sync_list(args, d, d_sub, filt, col_name, ignore_old, rss_ok, ydl_func):
 	}
 
 	# Sync the lists
-	__sync_list(args, d, d_sub, rows, ydl_func, summary)
+	for c_name, rss_ok, rowid in rows:
+		__sync_list(args, d, d_sub, ydl_func, c_name, rss_ok, rowid, summary)
 
 	print("\tDone: %d" % len(summary['done']))
 	print("\tError: %d" % len(summary['error']))
@@ -2011,97 +2012,94 @@ def _sync_list(args, d, d_sub, filt, col_name, ignore_old, rss_ok, ydl_func):
 		d_sub.update({'rowid': rowid}, {'atime': _now(), 'title': summary['info'][ytid]['title'], 'uploader': summary['info'][ytid]['uploader']})
 	d.commit()
 
-def __sync_list(args, d, d_sub, rows, f_get_list, summary):
+def __sync_list(args, d, d_sub, f_get_list, c_name, rss_ok, rowid, summary):
 	"""
 	Base function that does all the list syncing.
 
-	This iterates over a lsit of channels in @rows.
 	This list indicates if RSS is ok to use or not (can be overridden to not use RSS).
 	The RSS is used only to indicate that there are new videos to sync.
 	If a full sync is needed then __sync_list_full() is called.
 
 	@d is the database object
 	@d_sub is table object in @d
-	@rows is a simple array of names & RSS ok flags to print out and reference `vids` entries to
 	@f_get_list is a function in ydl library that gets videos for the given list (as this is unique for each list type, it must be supplied
 	@rss_ok -- can check RSS first
 	@summary -- dictionary to store results of syncing each list
 	"""
 
-	for c_name, rss_ok, rowid in rows:
-		# Alternate column name (specifically for unnamed channels)
-		c_name_alt = None
+	# Alternate column name (specifically for unnamed channels)
+	c_name_alt = None
 
-		# Print the name out to show progress
-		if d_sub.Name == 'ch':
-			row = d_sub.select_one('alias', "`rowid`=?", [rowid])
-			c_name_alt = row[0]
+	# Print the name out to show progress
+	if d_sub.Name == 'ch':
+		row = d_sub.select_one('alias', "`rowid`=?", [rowid])
+		c_name_alt = row[0]
 
-		if c_name_alt:
-			print("\t%s -> %s" % (c_name, c_name_alt))
+	if c_name_alt:
+		print("\t%s -> %s" % (c_name, c_name_alt))
+	else:
+		print("\t%s" % c_name)
+
+	# New list of YTID's from RSS, None if not processed
+	new = None
+
+	# If ok to check RSS, start there and if all video sthere are in the database
+	# then no need to pull down the full list
+	if rss_ok:
+		row = d.RSS.select_one("url", "`typ`=? and `name`=?", [d_sub.Name, c_name])
+		if row:
+			# Found RSS url, just use that
+			url = row['url']
 		else:
-			print("\t%s" % c_name)
+			_c = c_name_alt or c_name
 
-		# New list of YTID's from RSS, None if not processed
-		new = None
-
-		# If ok to check RSS, start there and if all video sthere are in the database
-		# then no need to pull down the full list
-		if rss_ok:
-			row = d.RSS.select_one("url", "`typ`=? and `name`=?", [d_sub.Name, c_name])
-			if row:
-				# Found RSS url, just use that
-				url = row['url']
+			# Find RSS URL from the list page
+			if d_sub.Name == 'c':
+				url = RSSHelper.GetByPage('http://www.youtube.com/c/%s' % _c)
+			elif d_sub.Name == 'ch':
+				url = RSSHelper.GetByPage('http://www.youtube.com/channel/%s' % _c)
+			elif d_sub.Name == 'u':
+				url = RSSHelper.GetByPage('http://www.youtube.com/user/%s' % _c)
+			elif d_sub.Name == 'pl':
+				# Playlists don't have RSS feeds
+				url = False
 			else:
-				_c = c_name_alt or c_name
+				raise Exception("Unrecognized list type")
 
-				# Find RSS URL from the list page
-				if d_sub.Name == 'c':
-					url = RSSHelper.GetByPage('http://www.youtube.com/c/%s' % _c)
-				elif d_sub.Name == 'ch':
-					url = RSSHelper.GetByPage('http://www.youtube.com/channel/%s' % _c)
-				elif d_sub.Name == 'u':
-					url = RSSHelper.GetByPage('http://www.youtube.com/user/%s' % _c)
-				elif d_sub.Name == 'pl':
-					# Playlists don't have RSS feeds
-					url = False
-				else:
-					raise Exception("Unrecognized list type")
+			print("\t\tFound RSS from list page, saving to DB (%s)" % url)
+			d.begin()
+			d.RSS.insert(typ=d_sub.Name, name=_c, url=url, atime=_now())
+			d.commit()
 
-				print("\t\tFound RSS from list page, saving to DB (%s)" % url)
-				d.begin()
-				d.RSS.insert(typ=d_sub.Name, name=_c, url=url, atime=_now())
-				d.commit()
-
-			# Check that url was found
-			if url == False:
-				print("\t\tCan't get RSS feed")
-				# Unable to get rss feed
-				rss_ok = False
-			else:
-				print("\t\tChecking RSS (%s)" % url)
-				ret = RSSHelper.ParseRSS_YouTube(url)
-				if ret:
-					present = []
-
-					# Save list of new YTID's
-					new = ret['ytids']
-
-					for ytid in ret['ytids']:
-						row = d.vids.select_one('rowid', '`name`=? and `ytid`=?', [c_name_alt or c_name, ytid])
-						if not row:
-							print("\t\tRSS shows new videos, obtain full list")
-							rss_ok = False
-							break
-
-		# If rss_ok is still True at this point then no need to check pull list
-		# If rss_ok is False, then it was False before checking RSS or was set False for error reasons
-		#  or (in particular) there are new videos to check
-		if rss_ok and not args.force:
-			continue
+		# Check that url was found
+		if url == False:
+			print("\t\tCan't get RSS feed")
+			# Unable to get rss feed
+			rss_ok = False
 		else:
-			# Fetch full list
-			__sync_list_full(args, d, d_sub, f_get_list, summary,   c_name, c_name_alt, new)
+			print("\t\tChecking RSS (%s)" % url)
+			ret = RSSHelper.ParseRSS_YouTube(url)
+			if ret:
+				present = []
+
+				# Save list of new YTID's
+				new = ret['ytids']
+
+				for ytid in ret['ytids']:
+					row = d.vids.select_one('rowid', '`name`=? and `ytid`=?', [c_name_alt or c_name, ytid])
+					if not row:
+						print("\t\tRSS shows new videos, obtain full list")
+						rss_ok = False
+						break
+
+	# If rss_ok is still True at this point then no need to check pull list
+	# If rss_ok is False, then it was False before checking RSS or was set False for error reasons
+	#  or (in particular) there are new videos to check
+	if rss_ok and not args.force:
+		return
+	else:
+		# Fetch full list
+		__sync_list_full(args, d, d_sub, f_get_list, summary,   c_name, c_name_alt, new)
 
 def __sync_list_full(args, d, d_sub, f_get_list, summary, c_name, c_name_alt, new):
 	"""
