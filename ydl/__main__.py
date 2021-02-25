@@ -1911,7 +1911,7 @@ class YDL:
 
 		print("Download videos")
 		try:
-			ret = download_videos(self.db, filt, ignore_old=self.args.ignore_old)
+			ret = download_videos(self.db, self.args, filt, ignore_old=self.args.ignore_old)
 		except Exception as e:
 			ret = sys.exc_info()
 
@@ -2212,7 +2212,7 @@ def __sync_list_full(args, d, d_sub, rows, f_get_list, summary, c_name, c_name_a
 		# Continue onward, ignore errors
 		d.rollback()
 
-def download_videos(d, filt, ignore_old):
+def download_videos(d, args, filt, ignore_old):
 	# Get total number of videos in the database
 	total = d.v.num_rows()
 
@@ -2261,12 +2261,12 @@ def download_videos(d, filt, ignore_old):
 
 		print("\t%d of %d: %s" % (i+1, len(rows), ytid))
 
-		_download_video(d, ytid, row)
+		_download_video(d, args, ytid, row)
 
 	# Completed download
 	return True
 
-def _download_video(d, ytid, row):
+def _download_video(d, args, ytid, row):
 	"""Download YTID and handle renaming, if needed"""
 
 	# Get preferred name, if one is set
@@ -2284,11 +2284,11 @@ def _download_video(d, ytid, row):
 	if row['atime'] is None:
 		print("\t\tVideo not synced yet, will get data from info.json file afterward")
 
-		dat = _download_video_TEMP(d, ytid, row, alias)
+		dat = _download_video_TEMP(d, args, ytid, row, alias)
 
 	# Name was present so just download
 	else:
-		dat = _download_video_known(d, ytid, row, alias)
+		dat = _download_video_known(d, args, ytid, row, alias)
 
 	if dat is not None:
 		# Update data
@@ -2296,7 +2296,7 @@ def _download_video(d, ytid, row):
 		d.v.update({"rowid": row['rowid']}, dat)
 		d.commit()
 
-def _download_video_TEMP(d, ytid, row, alias):
+def _download_video_TEMP(d, args, ytid, row, alias):
 	"""Download to TEMP-YTID first, then renamed based on info.json file that gets downloaded"""
 
 	# Keep the real directory name
@@ -2378,7 +2378,7 @@ def _download_video_TEMP(d, ytid, row, alias):
 
 	return dat
 
-def _download_video_known(d, ytid, row, alias):
+def _download_video_known(d, args, ytid, row, alias):
 	"""Download a known video (can down --sync-video before)"""
 	if row['name'] is None:
 		raise ValueError("Expected name to be set for ytid '%s'" % row['name'])
