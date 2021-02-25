@@ -999,7 +999,7 @@ class YDL:
 		elif len(self.args.name) == 2:
 			ytid = self.args.name[0]
 
-			pref_name = db.title_to_name(args.name[1])
+			pref_name = db.title_to_name(self.args.name[1])
 			if pref_name != self.args.name[1]:
 				raise KeyError("Name '%s' is not valid" % self.args.name[1])
 
