@@ -1332,75 +1332,23 @@ class YDL:
 		if type(self.args.sync) is list:		filt = self.args.sync
 		if type(self.args.sync_list) is list:	filt = self.args.sync_list
 
-		print("Update users")
-		self.sync_user(filt)
+		z = [
+			(self.db.u, 'name', ydl.get_list_user),
+			(self.db.c, 'name', ydl.get_list_c),
+			(self.db.ch, 'name', ydl.get_list_channel),
+			(self.db.pl, 'ytid', ydl.get_list_playlist),
+		]
 
-		print("Update unnamed channels")
-		self.sync_ch(filt)
+		for d_sub, col_name, ydl_func in z:
+			print("Update %s" % d_sub.Name)
 
-		print("Update named channels")
-		self.sync_c(filt)
+			rss_ok = not self.args.no_rss
 
-		print("Update playlists")
-		self.sync_pl(filt)
+			# Not applicable to playlists (no RSS)
+			if d_sub.Name == 'pl':
+				rss_ok = False
 
-	def sync_user(self, filt):
-		"""
-		Sync user videos
-
-		Use the database object @d to sync users.
-		If @ignore_old is True then skip those that have been sync'ed before.
-
-		If @rss_ok is True then RSS is attempted, otherwise the list is pulled down
-		As RSS feeds don't contain the entire history of a list, it is only good for incremental changes.
-		"""
-
-		_sync_list(self.args, self.db, self.db.u, filt, 'name', self.args.ignore_old, (not self.args.no_rss), ydl.get_list_user)
-
-	def sync_c(self, filt):
-		"""
-		Sync "named" channels (I don't know how else to call them) that are /c/NAME
-		as opposed to "unnamed" channels that are at /channel/NAME
-		I don't know the difference but they are not interchangeable.
-
-		Use the database object @d to sync all named channels.
-		If @ignore_old is True then skip those that have been sync'ed before.
-
-		If @rss_ok is True then RSS is attempted, otherwise the list is pulled down
-		As RSS feeds don't contain the entire history of a list, it is only good for incremental changes.
-		"""
-
-		_sync_list(self.args, self.db, self.db.c, filt, 'name', self.args.ignore_old, (not self.args.no_rss), ydl.get_list_c)
-
-	def sync_ch(self, filt):
-		"""
-		Sync "unnamed" channels (I don't know how else to call them) that are /channel/NAME
-		as opposed to "named" channels that are at /c/NAME
-		I don't know the difference but they are not interchangeable.
-
-		Use the database object @d to sync all named channels.
-		If @ignore_old is True then skip those that have been sync'ed before.
-
-		If @rss_ok is True then RSS is attempted, otherwise the list is pulled down
-		As RSS feeds don't contain the entire history of a list, it is only good for incremental changes.
-		"""
-
-		_sync_list(self.args, self.db, self.db.ch, filt, 'name', self.args.ignore_old, (not self.args.no_rss), ydl.get_list_channel)
-
-	def sync_pl(self, filt):
-		"""
-		Sync all playlists.
-
-		Use the database object @d to sync all playlists.
-		If @ignore_old is True then skip those that have been sync'ed before.
-
-		@rss_ok is disregarded as playlists don't have RSS feeds; listed to provide consistency (maybe they will change in the future?)
-		"""
-
-		# Not applicable to playlists (no RSS)
-		rss_ok = False
-
-		_sync_list(self.args, self.db, self.db.pl, filt, 'ytid', self.args.ignore_old, rss_ok, ydl.get_list_playlist)
+			_sync_list(self.args, self.db, d_sub, filt, col_name, self.args.ignore_old, rss_ok, ydl_func)
 
 	def sync_videos(self):
 		"""
