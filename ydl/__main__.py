@@ -468,6 +468,7 @@ class YDL:
 		p.add_argument('-f', '--file', default='ydl.db', help="use sqlite3 FILE (default ydl.db)")
 		p.add_argument('--stdin', action='store_true', default=False, help="Accept input on STDIN for parameters instead of arguments")
 		p.add_argument('--debug', choices=('debug','info','warning','error','critical'), default='error', help="Set logging level")
+		p.add_argument('--rate', nargs=1, default=None, type=int, help="Download rate in bps (default 900000)")
 
 		p.add_argument('--add', nargs='*', default=False, help="Add URL(s) to download")
 		p.add_argument('--name', nargs='*', default=False, help="Supply a YTID and file name to manually specify it")
@@ -2316,7 +2317,7 @@ def _download_video_TEMP(d, ytid, row, alias):
 	try:
 		# Escape percent signs
 		fname = fname.replace('%', '%%')
-		ydl.download(row['ytid'], fname, dname)
+		ydl.download(row['ytid'], fname, dname, rate=args.rate)
 	except KeyboardInterrupt:
 		# Didn't complete download
 		return False
@@ -2392,7 +2393,7 @@ def _download_video_known(d, ytid, row, alias):
 		os.mkdir(dname)
 
 	try:
-		ydl.download(row['ytid'], fname, dname)
+		ydl.download(row['ytid'], fname, dname, rate=args.rate)
 	except KeyboardInterrupt:
 		# Didn't complete download
 		return False
