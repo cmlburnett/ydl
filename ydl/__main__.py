@@ -1003,7 +1003,7 @@ class YDL:
 			if pref_name != self.args.name[1]:
 				raise KeyError("Name '%s' is not valid" % self.args.name[1])
 
-			dname = self.db.get_v_dname(ytid)
+			dname = self.db.get_v_dname(ytid, absolute=False)
 
 			# Get file name without suffix
 			fname = self.db.get_v_fname(ytid, suffix=None)
