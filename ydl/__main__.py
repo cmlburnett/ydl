@@ -2309,6 +2309,8 @@ def _download_video_TEMP(d, args, ytid, row, alias):
 		# If no name is present, use TEMP
 		dname,fname = db.format_v_names(row['dname'], 'TEMP', alias, row['ytid'])
 
+	print("\t\tDirectory: %s" % dname)
+
 	# Make subdir if it doesn't exist (this should have been done with --add)
 	if not os.path.exists(dname):
 		os.mkdir(dname)
@@ -2387,6 +2389,8 @@ def _download_video_known(d, args, ytid, row, alias):
 	dname,fname = db.format_v_names(row['dname'], row['name'], alias, row['ytid'])
 	# Have to escape the percent signs
 	fname = fname.replace('%', '%%')
+
+	print("\t\tDirectory: %s" % dname)
 
 	# Make subdir if it doesn't exist
 	if not os.path.exists(dname):
