@@ -75,6 +75,7 @@ from .util import sec_str
 from .util import list_to_quoted_csv, bytes_to_str
 from .util import ytid_hash, ytid_hash_remap
 from .util import inputopts
+from .util import print_2col
 
 from .fuse import ydl_fuse
 
@@ -179,6 +180,12 @@ class db(SH):
 			DBCol('url', 'text'),
 			DBCol('atime', 'datetime'), # Last time the RSS feed was sync'ed
 		),
+
+		# Stride (divides a list's videos into different directories)
+		DBTable("stride",
+			DBCol('name', 'text'),
+			DBCol('stride', 'int')
+		),
 	]
 	def open(self, rowfactory=None):
 		ex = os.path.exists(self.Filename)
@@ -221,6 +228,19 @@ class db(SH):
 
 	def add_channel_unnamed(self, name):
 		return self.ch.insert(name=name, ctime=_now())
+
+
+	def get_stride(self, name):
+		"""
+		Gets the stride of the list, which is over how many directories the videos are spread.
+		"""
+
+		row = self.stride.select_one('stride', '`name`=?', [name])
+		if row is None:
+			# Default is one (all files in the root directory)
+			return 1
+		else:
+			return row['stride']
 
 
 	def get_v(self, filt, ignore_old):
@@ -701,7 +721,6 @@ class YDL:
 
 		self.db.commit()
 
-
 	def info(self):
 		if not len(self.args.info):
 			self.info_db()
@@ -709,17 +728,14 @@ class YDL:
 			self.info_videos()
 
 	def info_db(self):
-		print("Database information")
-
-		print("\tFile: %s" % self.db.Filename)
-
-		print()
-
 		cs = self.db.c.num_rows()
 		chs = self.db.ch.num_rows()
 		us = self.db.u.num_rows()
 		pls = self.db.pl.num_rows()
 
+		print("Database information")
+		print("\tFile: %s" % self.db.Filename)
+		print()
 		print("\tNamed channels: %d" % cs)
 		print("\tUnnamed channels: %d" % chs)
 		print("\tUsers: %d" % us)
@@ -878,14 +894,7 @@ class YDL:
 			['Exists?', exists],
 			['Size', size],
 		]
-
-		# Get maximum length of the keys
-		maxlen = max( [len(_[0]) for _ in inf] )
-
-		# Print out the information
-		for k,v in inf:
-			print('\t\t' + ("%0" + str(maxlen) + "s: %s") % (k,v))
-		print()
+		print_2col(inf)
 
 	def skip(self):
 		"""
@@ -1117,10 +1126,10 @@ class YDL:
 		If --listall supplied then list all of that and the videos for each list.
 		"""
 
-		self.list_user()
-		self.list_c()
-		self.list_ch()
-		self.list_pl()
+		self._list(self.db.u, 'name')
+		self._list(self.db.c, 'name')
+		self._list(self.db.ch, 'name')
+		self._list(self.db.pl, 'ytid')
 
 	def listall(self, ytids):
 		"""
@@ -1183,118 +1192,25 @@ class YDL:
 		print("\t\tSkipped: %d of %d" % (skipped, len(ytids)))
 		print("\t\tExists: %d of %d non-skipped" % (counts, len(ytids)-skipped))
 
-	def list_user(self):
-		"""
-		List the users.
-		"""
-
+	def _list(self, sub_d, col_name):
 		where = ""
 		if type(self.args.list) is list and len(self.args.list):
-			where = "`name` in (%s)" % list_to_quoted_csv(self.args.list)
+			where = "`%s` in (%s)" % (col_name, list_to_quoted_csv(self.args.list))
 		if type(self.args.listall) is list and len(self.args.listall):
-			where = "`name` in (%s)" % list_to_quoted_csv(self.args.listall)
+			where = "`%s` in (%s)" % (col_name, list_to_quoted_csv(self.args.listall))
 
-		res = self.db.u.select("*", where)
+		res = sub_d.select("*", where)
 		rows = [dict(_) for _ in res]
-		rows = sorted(rows, key=lambda _: _['name'])
+		rows = sorted(rows, key=lambda _: _[col_name])
 
 
-		print("Users (%d):" % len(rows))
+		print("%s (%d):" % (sub_d.Name, len(rows)))
 		for row in rows:
-			sub_res = self.db.vids.select(["rowid","ytid"], "`name`=?", [row['name']], "`idx` asc")
+			sub_res = self.db.vids.select(["rowid","ytid"], "`name`=?", [row[col_name]], "`idx` asc")
 			sub_rows = [dict(_) for _ in sub_res]
 			sub_cnt = len(sub_rows)
 
-			print("\t%s (%d)" % (row['name'], sub_cnt))
-
-			# Do only if --listall
-			if type(self.args.listall) is list:
-				ytids = [_['ytid'] for _ in sub_rows]
-				self.listall(ytids)
-
-	def list_c(self):
-		"""
-		List the named channels.
-		"""
-
-		where = ""
-		if type(self.args.list) is list and len(self.args.list):
-			where = "`name` in (%s)" % list_to_quoted_csv(self.args.list)
-		if type(self.args.listall) is list and len(self.args.listall):
-			where = "`name` in (%s)" % list_to_quoted_csv(self.args.listall)
-
-		res = self.db.c.select("*", where)
-		rows = [dict(_) for _ in res]
-		rows = sorted(rows, key=lambda _: _['name'])
-
-		print("Named channels (%d):" % len(rows))
-		for row in rows:
-			sub_res = self.db.vids.select(["rowid","ytid"], "`name`=?", [row['name']], "`idx` asc")
-			sub_rows = [dict(_) for _ in sub_res]
-			sub_cnt = len(sub_rows)
-
-			print("\t%s (%d)" % (row['name'], sub_cnt))
-
-			# Do only if --listall
-			if type(self.args.listall) is list:
-				ytids = [_['ytid'] for _ in sub_rows]
-				self.listall(ytids)
-
-	def list_ch(self):
-		"""
-		List the unnamed channels.
-		"""
-
-		where = ""
-		if type(self.args.list) is list and len(self.args.list):
-			where = "`name` in ({0}) or `alias` in ({0})".format(list_to_quoted_csv(self.args.list))
-		if type(self.args.listall) is list and len(self.args.listall):
-			where = "`name` in ({0}) or `alias` in ({0})".format(list_to_quoted_csv(self.args.listall))
-
-		res = self.db.ch.select(['rowid','name','alias'], where)
-		rows = [dict(_) for _ in res]
-		rows = sorted(rows, key=lambda _: _['alias'] or _['name'])
-
-		print("Unnamed channels (%d):" % len(rows))
-		for row in rows:
-			name = row['alias'] or row['name']
-
-			sub_res = self.db.vids.select(["rowid","ytid"], "`name`=?", [name], "`idx` asc")
-			sub_rows = [dict(_) for _ in sub_res]
-			sub_cnt = len(sub_rows)
-
-			if row['alias']:
-				print("\t%s -> %s (%d)" % (row['name'], row['alias'], sub_cnt))
-			else:
-				print("\t%s (%d)" % (row['name'], sub_cnt))
-
-			# Do only if --listall
-			if type(self.args.listall) is list:
-				ytids = [_['ytid'] for _ in sub_rows]
-				self.listall(ytids)
-
-	def list_pl(self):
-		"""
-		List the playlists.
-		"""
-
-		where = ""
-		if type(self.args.list) is list and len(self.args.list):
-			where = "`ytid` in (%s)" % list_to_quoted_csv(self.args.list)
-		if type(self.args.listall) is list and len(self.args.listall):
-			where = "`ytid` in (%s)" % list_to_quoted_csv(self.args.listall)
-
-		res = self.db.pl.select("*", where)
-		rows = [dict(_) for _ in res]
-		rows = sorted(rows, key=lambda _: _['ytid'])
-
-		print("Playlists (%d):" % len(rows))
-		for row in rows:
-			sub_res = self.db.vids.select(["rowid","ytid"], "`name`=?", [row['ytid']], "`idx` asc")
-			sub_rows = [dict(_) for _ in sub_res]
-			sub_cnt = len(sub_rows)
-
-			print("\t%s (%d)" % (row['ytid'], sub_cnt))
+			print("\t%s (%d)" % (row[col_name], sub_cnt))
 
 			# Do only if --listall
 			if type(self.args.listall) is list:
@@ -2014,10 +1930,11 @@ def __sync_list(args, d, d_sub, f_get_list, c_name, rss_ok, rowid, summary):
 			else:
 				raise Exception("Unrecognized list type")
 
-			print("\t\tFound RSS from list page, saving to DB (%s)" % url)
-			d.begin()
-			d.RSS.insert(typ=d_sub.Name, name=_c, url=url, atime=_now())
-			d.commit()
+			if url:
+				print("\t\tFound RSS from list page, saving to DB (%s)" % url)
+				d.begin()
+				d.RSS.insert(typ=d_sub.Name, name=_c, url=url, atime=_now())
+				d.commit()
 
 		# Check that url was found
 		if url == False:
@@ -2069,7 +1986,6 @@ def __sync_list_full(args, d, d_sub, f_get_list, summary, c_name, c_name_alt, ne
 
 	print("\t\tChecking full list")
 
-	d.begin()
 	try:
 		# Get list of videos using a ydl library function
 		cur = f_get_list(c_name, getVideoInfo=False)
@@ -2092,6 +2008,8 @@ def __sync_list_full(args, d, d_sub, f_get_list, summary, c_name, c_name_alt, ne
 			weird_diff = set(new) - set([_['ytid'] for _ in cur['info']])
 		else:
 			weird_diff = []
+
+		d.begin()
 
 		# At least one is new
 		if all_old and not args.force:
@@ -2357,6 +2275,43 @@ def _download_video_known(d, args, ytid, row, alias):
 	}
 	return dat
 
+
+def _main_stride(args, d):
+	# List name
+	name = args.stride[0]
+
+	# See what's there
+	row = d.stride.select_one(['rowid','name','stride'], '`name`=?', [name])
+
+	# Check stride of given list
+	if len(args.stride) == 1:
+		print("Stride:")
+
+		if row:
+			s = row['stride']
+		else:
+			s = 1
+
+		print("\t%s: %d" % (name, s))
+
+	# Set stride of the given list
+	elif len(args.stride) == 2:
+		print("Stride:")
+
+		stride = int(args.stride[1])
+
+		d.begin()
+		if row is None:
+			d.stride.insert(name=name, stride=stride)
+		else:
+			d.stride.update({'rowid': row['rowid']}, {'stride': stride})
+		d.commit()
+
+		print("\t%s: %d" % (name, stride))
+
+	else:
+		print("Too many parameters to set stride")
+		sys.exit(-1)
 
 
 

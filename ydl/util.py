@@ -256,3 +256,19 @@ def ytid_hash_remap(v, r_old, r_new):
 
 	return (z[0], z[1], z[0] == z[1])
 
+def print_2col(vals):
+	"""
+	Print a list of 2-tuples in two columns.
+	"""
+
+	keys,values = zip(*vals)
+	len_keys = max([len(_) for _ in keys if _ is not None])
+	len_keys += 5
+
+	for i,key in enumerate(keys):
+		if key is None:
+			print()
+			continue
+
+		print( "%{0}s: {1}".format(len_keys, values[i]) % key )
+
