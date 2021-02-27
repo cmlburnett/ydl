@@ -1596,6 +1596,13 @@ class YDL:
 
 				elif z == 'e':
 					with tempfile.NamedTemporaryFile(mode='w+') as f:
+						f.write("# %s\n" % ytid)
+						f.write("#  Title:      %s\n" % dat[ytid]['title'])
+						f.write("#  Duration:   %d sec (%s)\n" % (dat[ytid]['duration'], sec_str(dat[ytid]['duration'])))
+						f.write("#  Published:  %s\n" % dat[ytid]['ptime'])
+						f.write("#  Accessed:   %s\n" % dat[ytid]['atime'])
+						f.write("#  Downloaded: %s\n" % dat[ytid]['utime'])
+						f.write("#\n")
 						f.write("# Chapter information consists of two columns separated by a tab, first column is a time stamp in HH:MM:SS format and the second column is the chapter name.\n")
 						f.write("# Every line with # is discarded.\n")
 						f.write("# Empty lines are ignored\n")
