@@ -2185,11 +2185,19 @@ def _download_video_TEMP(d, args, ytid, row, alias):
 	if not os.path.exists(dname):
 		os.mkdir(dname)
 
+	# Comes in as a list
+	rate = None
+	if args.rate:
+		rate = args.rate[0]
+
 	# Download mkv file, description, info.json, thumbnails, etc
 	try:
 		# Escape percent signs
 		fname = fname.replace('%', '%%')
-		ydl.download(row['ytid'], fname, dname, rate=args.rate)
+		if rate is None:
+			ydl.download(row['ytid'], fname, dname)
+		else:
+			ydl.download(row['ytid'], fname, dname, rate=rate)
 	except KeyboardInterrupt:
 		# Didn't complete download
 		return False
