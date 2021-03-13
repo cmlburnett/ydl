@@ -923,6 +923,8 @@ class YDL:
 				raise NotImplementedError("--xml not meaningful when adding skipped videos")
 
 			ytids = list(set(self.args.skip))
+			ytids = ['-' + _[1:] for _ in ytids if _[0] == '='] + [_ for _ in ytids if _[0] != '=']
+
 			print("Marking videos to skip (%d):" % len(ytids))
 
 
