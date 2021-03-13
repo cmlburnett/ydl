@@ -2276,8 +2276,13 @@ def _download_video_known(d, args, ytid, row, alias):
 	if not os.path.exists(dname):
 		os.mkdir(dname)
 
+	# Comes in as a list
+	rate = None
+	if args.rate:
+		rate = args.rate[0]
+
 	try:
-		ydl.download(row['ytid'], fname, dname, rate=args.rate)
+		ydl.download(row['ytid'], fname, dname, rate=rate)
 	except KeyboardInterrupt:
 		# Didn't complete download
 		return False
