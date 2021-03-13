@@ -407,6 +407,35 @@ def _rename_files(dname, ytid, newname, old_dname=None):
 			# or "FOO - YTID - STUFF_0.JPG"
 			parts = f.split(ytid)
 
+			# Sometimes this happens that the file downloaded is an MP4 or something
+			# and youtube-dl doesn't put a suffix on it (seems to be older videos). Annoying.
+			# And it doesn't merge into an mkv as requested. Annoying x2.
+			# So this doesn't know what to do with the name, so try to fix the file first and then rename
+			if parts[-1] == '':
+				# Get file information
+				r = subprocess.run(['file', f], stdout=subprocess.PIPE)
+				ret = r.stdout.decode('utf-8')
+				if 'MP4' in ret:
+					dest = f + '.mkv'
+					# Assume MP4 and get ffmpeg to convert it
+					subprocess.run(['ffmpeg', '-i', f, '-c', 'copy', dest])
+					if not os.path.exists(dest):
+						raise Exception("Unable to fix this incorrectly downloaded video: YTID=%s, file=%s" % (ytid, f))
+
+					# Remove old file
+					os.unlink(f)
+
+					# Redo
+					f = dest
+					parts = f.split(ytid)
+				elif 'Matroska' in ret:
+					# This case probably won't happen, but include it anyway as it's easy to handle
+					# Just rename
+					dest = f + '.mkv'
+					os.rename(f, dest)
+				else:
+					raise Exception("Unknown file contents for %s, `file` output is '%s'" % (f, ret))
+
 			# Get the dot suffix of the file
 			last = parts[-1].rsplit('.', 1)
 
