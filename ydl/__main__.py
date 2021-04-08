@@ -1144,7 +1144,7 @@ class YDL:
 			# Add/update alias to channel
 			self.db.begin()
 			self.db.ch.update({'rowid': row['rowid']}, {'alias': pref})
-			self.db.v.update({'dname': args.alias[0]}, {'dname': pref})
+			self.db.v.update({'dname': self.args.alias[0]}, {'dname': pref})
 			self.db.vids.update({'name': old_name}, {'name': pref})
 			self.db.commit()
 
