@@ -24,6 +24,21 @@ def sec_str(sec):
 	else:
 		return "0:%d" % sec
 
+def t_to_sec(t):
+	"""
+	Convert a time spec (HHH:MM:SS) into an integer number of seconds.
+	"""
+
+	parts = t.split(':')
+	if len(parts) == 1:
+		return int(parts[0])
+	elif len(parts) == 2:
+		return int(parts[0])*60 + int(parts[1])
+	elif len(parts) == 3:
+		return int(parts[0])*3600 + int(parts[1])*60 + int(parts[2])
+	else:
+		raise ValueError("Too many parts to time format: '%s'" % t)
+
 def inputopts(txt):
 	"""
 	Pose an input prompt and parse the options.

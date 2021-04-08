@@ -71,7 +71,7 @@ from sqlitehelper import SH, DBTable, DBCol, DBColROWID
 import mkvxmlmaker
 
 from .util import RSSHelper
-from .util import sec_str
+from .util import sec_str, t_to_sec
 from .util import list_to_quoted_csv, bytes_to_str
 from .util import ytid_hash, ytid_hash_remap
 from .util import inputopts
@@ -516,6 +516,12 @@ class YDL:
 
 		p.add_argument('--chapter-edit', default=False, nargs=1, help="Edit chapters for the given video file")
 		p.add_argument('--chapterize', default=False, nargs='+', help="Add chapters to a file. Must use --chapter-edit first to provide chapter information, then --chapterize the video.")
+		p.add_argument('--split', default=False, nargs=3, help="Split video into the specified output file type (eg, mkv for video, mp3:128kbps, mp3:320kbps) and the output string format (can use standard python string formatting with {artist}, {album}, {N}, {total}, {year}, {genre}, {ytid}, {name}) . Must use --chapter-edit first to provide the chapter information, then --split the video.")
+
+		p.add_argument('--artist', default=False, help="Set artist, if splitting to audio file")
+		p.add_argument('--album', default=False, help="Set album, if splitting to audio file")
+		p.add_argument('--year', default=False, help="Set year, if splitting to audio file")
+		p.add_argument('--genre', default=False, help="Set genre, if splitting to audio file")
 
 		return p.parse_args()
 
@@ -584,6 +590,9 @@ class YDL:
 
 		if self.args.chapterize is not False:
 			self.chapterize()
+
+		if self.args.split is not False:
+			self.split()
 
 	def add(self):
 		# Processing list of URLs
@@ -1727,6 +1736,182 @@ class YDL:
 			args = ['mkvmerge', '-o', fname_chapsmkv, '--chapters', fname_chaps, fname]
 			print(" ".join(args))
 			subprocess.run(args)
+
+	def split(self):
+		abort = False
+
+		dat = {}
+
+		print("Checking that video is present")
+		print()
+
+		# Get arguments for splitting: YTID OUTPUT_FORMAT FILENAME_FORMAT
+		ytid = self.args.split[0]
+		fmt = self.args.split[1]
+		outfmt = self.args.split[2]
+
+		# Check that format is ok
+		recognized_formats = ('mkv', 'mp3', 'ogg')
+		if ':' in fmt:
+			parts = fmt.split(':',1)
+
+			if parts[0] not in recognized_formats:
+				print("Format '%s' is not recognized (%s)" % (fmt, recognized_formats))
+				sys.exit(-1)
+
+			if parts[0] == 'mp3' and not parts[1].endswith('kbps'):
+				print("Format '%s' must end with 'kbps' to indicate bitrate" % fmt)
+				sys.exit(-1)
+
+		else:
+			if fmt not in recognized_formats:
+				print("Format '%s' is not recognized (%s)" % (fmt, recognized_formats))
+				sys.exit(-1)
+
+
+		# Path is %YTD%/SPLIT/YTID/
+		dname = os.path.dirname(self.db.Filename) + '/SPLIT'
+		if not os.path.exists(dname):
+			os.mkdir(dname)
+
+		dname = os.path.dirname(self.db.Filename) + '/SPLIT/' + ytid + '/'
+		if not os.path.exists(dname):
+			os.mkdir(dname)
+
+
+		# Get video data
+		row = self.db.v.select_one('*', '`ytid`=?', [ytid])
+		if row is None:
+			print("\tNot a recognized video")
+			sys.exit(-1)
+		row = dict(row)
+
+		# Get file name
+		fname = self.db.get_v_fname(ytid)
+		if not os.path.exists(fname):
+			print("\tNot downloaded, use --download to get the video first")
+			sys.exit(-1)
+
+		# Save data
+		dat[ytid] = dict(row)
+		dat[ytid]['path'] = fname
+
+		print("-"*80)
+		print("Split")
+		print()
+
+		print("%s -- %s" % (ytid, dat[ytid]['title']))
+
+		# Source file path
+		fname = dat[ytid]['path']
+
+		# Debug
+		print(dat[ytid]['chapters'])
+
+		# Need to get start time of subsequent chapter to pass as -to parameter to ffmpeg to stop at the end of the chapter
+		for i in range(len(dat[ytid]['chapters'])-1):
+			c = dat[ytid]['chapters'][i]
+			n = dat[ytid]['chapters'][i+1]
+
+			dat[ytid]['chapters'][i] = (c[0], n[0], c[1])
+		# duration paramter for th elast chapter is None so that it reads to the end of the original file
+		dat[ytid]['chapters'][-1] = (dat[ytid]['chapters'][-1][0], None, dat[ytid]['chapters'][-1][1])
+
+		# Iterate over chapters and output
+		num = 1
+		for t,dur,cname in dat[ytid]['chapters']:
+			# Gather possible {fields} for formatting
+			z = {'N': num, 'total': len(dat[ytid]['chapters']), 'ytid': ytid, 'name': cname}
+			if self.args.artist:
+				z['artist'] = self.args.artist
+			if self.args.album:
+				z['album'] = self.args.album
+			if self.args.year:
+				z['year'] = self.args.year
+			if self.args.genre:
+				z['genre'] = self.args.genre
+
+			# Format file name as specified
+			fname_out = outfmt.format(**z)
+
+			# Add extra arguments depending on the output format
+			if fmt == 'mkv':
+				fname_out += '.mkv'
+				# Copy video/audio, so pure dicing of the MKV up
+				extra_args = ['-c:a', 'copy', '-c:v', 'copy']
+			elif fmt.startswith('mp3:'):
+				fname_out += '.mp3'
+				# format must be like "mp3:196kbps" to get the right bitrate passed
+				extra_args = ['-c:a', 'libmp3lame', '-b:a', fmt.split(':',1)[-1][0:-3]]
+			elif fmt.startswith('ogg:'):
+				fname_out += '.ogg'
+				# format must be like "ogg:5.0" to get the right quality passed
+				# -map 0:a:0 maps the audio but not the video
+				extra_args = ['-map', '0:a:0', '-c:a', 'libvorbis', '-q:a', fmt.split(':',1)[-1]]
+			else:
+				raise Exception("Unrecognized output format '%s'" % fmt)
+
+			# Create ffmpeg arguments
+			if dur is None:
+				args = ['ffmpeg', '-accurate_seek', '-i', fname, '-ss', t] + extra_args + [dname + fname_out]
+			else:
+				args = ['ffmpeg', '-accurate_seek', '-i', fname, '-ss', t, '-to', dur] + extra_args + [dname + fname_out]
+
+			print(" ".join(args))
+			subprocess.run(args)
+
+
+			# Add an ID3 tag if an mp3
+			if fmt.startswith('mp3:'):
+				id3tag = []
+				if self.args.artist:
+					id3tag.append('--artist=%s' % self.args.artist)
+				if self.args.album:
+					id3tag.append('--album=%s' % self.args.album)
+				if self.args.year:
+					id3tag.append('--year=%s' % self.args.year)
+				if self.args.genre:
+					id3tag.append('--genre=%s' % self.args.genre)
+
+				id3tag.append('--track=%d' % num)
+				id3tag.append('--total=%d' % len(dat[ytid]['chapters']))
+				id3tag.append('--song=%s' % cname)
+
+				args = ['id3tag'] + id3tag + [dname + fname_out]
+				print(" ".join(args))
+				subprocess.run(args)
+
+			elif fmt.startswith('ogg:'):
+				args = ['vorbiscomment', '-w', '-t', 'TITLE=%s' % cname, dname + fname_out]
+				print(" ".join(args))
+				subprocess.run(args)
+
+				args = ['vorbiscomment', '-a', '-t', 'TRACKNUMBER=%d' % num, dname + fname_out]
+				print(" ".join(args))
+				subprocess.run(args)
+
+				if self.args.artist:
+					args = ['vorbiscomment', '-a', '-t', 'ARTIST='+self.args.artist, dname + fname_out]
+					print(" ".join(args))
+					subprocess.run(args)
+				if self.args.album:
+					args = ['vorbiscomment', '-a', '-t', 'ALBUM='+self.args.album, dname + fname_out]
+					print(" ".join(args))
+					subprocess.run(args)
+				if self.args.year:
+					args = ['vorbiscomment', '-a', '-t', 'DATE='+self.args.year, dname + fname_out]
+					print(" ".join(args))
+					subprocess.run(args)
+				if self.args.genre:
+					args = ['vorbiscomment', '-a', '-t', 'GENRE='+self.args.genre, dname + fname_out]
+					print(" ".join(args))
+					subprocess.run(args)
+
+
+			elif fmt == 'mkv':
+				pass
+
+			num += 1
 
 	def updatenames(self):
 		print("Updating file names to v.name or with preferred name")
