@@ -76,6 +76,7 @@ from .util import list_to_quoted_csv, bytes_to_str
 from .util import ytid_hash, ytid_hash_remap
 from .util import inputopts
 from .util import print_2col
+from .util import title_to_name
 
 from .fuse import ydl_fuse
 
@@ -300,44 +301,7 @@ class db(SH):
 
 	@staticmethod
 	def title_to_name(t):
-		"""
-		Translates the title to a file name.
-		There are several banned characters and will collapse whitespace, etc
-		"""
-
-		t = t.encode('ascii', errors='ignore').decode('ascii')
-
-		# If @t supplied is empty or contains non-ascii characters,
-		# then @t here is an empty string so use NOTHING as the title instead
-		if not len(t):
-			return "NOTHING"
-
-		# Strip off leading decimals (glob won't find hidden dot files)
-		while t[0] == '.':
-			t = t[1:]
-
-		# Preserve these with a hyphen
-		t = t.replace(':', '-')
-		t = t.replace('/', '-')
-		t = t.replace('\\', '-')
-
-		# Just nuke these
-		t = t.replace('!', '')
-		t = t.replace('?', '')
-		t = t.replace('|', '')
-
-		# Collapse all multiple spaces into a single space (each replace will cut # of spaces
-		# by half, so assuming no more than 16 spaces
-		t = t.replace('  ', ' ')
-		t = t.replace('  ', ' ')
-		t = t.replace('  ', ' ')
-		t = t.replace('  ', ' ')
-		t = t.replace('  ', ' ')
-
-		# Get rid of whitespace on the ends
-		t = t.strip()
-
-		return t
+		return title_to_name(t)
 
 	@staticmethod
 	def alias_coerce(a):

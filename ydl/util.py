@@ -272,3 +272,43 @@ def print_2col(vals):
 
 		print( "%{0}s: {1}".format(len_keys, values[i]) % key )
 
+def title_to_name(t):
+	"""
+	Translates the title to a file name.
+	There are several banned characters and will collapse whitespace, etc
+	"""
+
+	t = t.encode('ascii', errors='ignore').decode('ascii')
+
+	# If @t supplied is empty or contains non-ascii characters,
+	# then @t here is an empty string so use NOTHING as the title instead
+	if not len(t):
+		return "NOTHING"
+
+	# Strip off leading decimals (glob won't find hidden dot files)
+	while t[0] == '.':
+		t = t[1:]
+
+	# Preserve these with a hyphen
+	t = t.replace(':', '-')
+	t = t.replace('/', '-')
+	t = t.replace('\\', '-')
+
+	# Just nuke these
+	t = t.replace('!', '')
+	t = t.replace('?', '')
+	t = t.replace('|', '')
+
+	# Collapse all multiple spaces into a single space (each replace will cut # of spaces
+	# by half, so assuming no more than 16 spaces
+	t = t.replace('  ', ' ')
+	t = t.replace('  ', ' ')
+	t = t.replace('  ', ' ')
+	t = t.replace('  ', ' ')
+	t = t.replace('  ', ' ')
+
+	# Get rid of whitespace on the ends
+	t = t.strip()
+
+	return t
+
