@@ -1627,6 +1627,8 @@ class YDL:
 						for line in z:
 							parts = line.split('\t',1)
 							parts = [_.strip() for _ in parts]
+							# Fix an easy typo
+							parts[0] = parts[0].replace(';',':')
 							y.append(parts)
 
 						self.db.begin()
