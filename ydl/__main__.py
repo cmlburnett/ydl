@@ -1821,7 +1821,7 @@ class YDL:
 		num = 1
 		for t,dur,cname in dat[ytid]['chapters']:
 			# Gather possible {fields} for formatting
-			z = {'N': num, 'total': len(dat[ytid]['chapters']), 'ytid': ytid, 'name': cname}
+			z = {'N': "%0*d" % (len(str(len(dat[ytid]['chapters']))),num), 'total': len(dat[ytid]['chapters']), 'ytid': ytid, 'name': cname}
 			if self.args.artist:
 				z['artist'] = self.args.artist
 			if self.args.album:
