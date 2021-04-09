@@ -1834,6 +1834,9 @@ class YDL:
 			# Format file name as specified
 			fname_out = outfmt.format(**z)
 
+			# Fix some characters that can't be in names
+			fname_out = title_to_name(fname_out)
+
 			# Add extra arguments depending on the output format
 			if fmt == 'mkv':
 				fname_out += '.mkv'
