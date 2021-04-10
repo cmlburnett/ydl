@@ -1619,12 +1619,17 @@ class YDL:
 						f.write("# HH:MM:SS			Title\n")
 						f.write("\n")
 
-						if dat[ytid]['chapters'] is not None:
-							chaps = dat[ytid]['chapters']
-							print(['chaps', chaps])
-							for chap in chaps:
-								print(['chap', chap])
-								f.write("%s\t%s\n" % (chap[0],chap[1]))
+						try:
+							if dat[ytid]['chapters'] is not None:
+								chaps = dat[ytid]['chapters']
+								print(['chaps', chaps])
+								for chap in chaps:
+									print(['chap', chap])
+									f.write("%s\t%s\n" % (chap[0],chap[1]))
+						except Exception as e:
+							traceback.print_exc()
+							print("Caught exception, will load blank screen")
+
 						f.seek(0)
 
 						# Edit with vim
