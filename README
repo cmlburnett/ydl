@@ -4,6 +4,76 @@ Wrapper for youtube-dl module
 
 that simplifies calling it to download from youtube.
 
+### As an executable library ###
+Execute the library as a script
+
+	python -m ydl --help
+
+Using ydl in this manner creates a sqlite database in the current directory to store videos.
+
+	python -m ydl --add https://www.youtube.com/user/NASAtelevision
+	python -m ydl --sync-list NASAtelevision
+	python -m ydl --download NASAtelevision
+
+This will add NASA to the list of channels, sync the list to check for new videos, and download videos.
+When downloading videos, files are saved with the video title used a sthe file name that is heavily modified to be filesystem friendly.
+You can use --ignore-old to skip downloading old videos (videos already downloaded) when called later.
+
+	python -m ydl --ignore-old --download NASAtelevision
+
+To list all of the channels and playlists being tracked:
+
+	python -m ydl --list
+
+and to list all the channels and playlists and their videos:
+
+	python -m ydl --listall
+
+To get more information on the database
+
+	python -m ydl --info
+
+To get information on all videos in a channel
+
+	python -m ydl --info NASAtelevision
+
+TO get information on a specific video
+
+	python -m ydl --info _fRSaLAEW2s
+
+When passing a YTID that begins with a dash, you must change it to an equal sign since python interprets it as an argument
+
+	python -m ydl --info =A58krE7bBE
+
+If there's a video to skip because it's private, requires payment, you don't care about it, etc pass it in with --skip
+
+	python -m ydl --skip _fRSaLAEW2s
+
+and --unskip to take it off the skip list.
+
+Other functions:
+
+	--name					Set the name for a video to something other than generated from the video title
+	--alias					Some channels are "unnamed" and this sets an alias for it
+	--rate					Sets the download rate in bits per second
+	--update-names			Renames all files for a YTID (more of a debug function)
+	--force					Force an action, which bypasses some checks to be more efficient
+	--no-rss				Skip checking RSS for a --sync-list action
+	--notify				Uses Pushover to send notifications to your phone, etc (configure with ~/.pushoverrc) when things finish
+
+	--merge-playlist		Merge an entire playlist into a single video using each playlist item as a chapter in the final video
+	--chapter-edit			Edit chapter information for a video
+	--chapterize			Take the chapter information, and add it to the video (creates a new copy with chapter info)
+	--split					Dice up a file based on chapter information (mkv, mp3, or ogg)
+	--convert				Convert file to mp3 or ogg
+
+	--artist				Add artist information if making mp3 or ogg
+	--album					Add album information if making mp3 or ogg
+	--year					Add year information if making mp3 or ogg
+	--genre					Add genre information if making mp3 or ogg
+
+
+### As a regular library ###
 	import ydl
 	ydl.download([('dQw4w9WgXcQ', 'Rick Astley', 'Never Gonna Give You Up')])
 
