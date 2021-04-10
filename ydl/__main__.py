@@ -1547,7 +1547,11 @@ class YDL:
 		print("Checking that videos are present")
 		print()
 
-		for ytid in self.args.chapter_edit:
+		# Unescape = to - for leading character
+		ytids = list(self.args.chapter_edit)
+		ytids = ['-' + _[1:] for _ in ytids if _[0] == '='] + [_ for _ in ytids if _[0] != '=']
+
+		for ytid in ytids:
 			print(ytid)
 
 			row = self.db.v.select_one('*', '`ytid`=?', [ytid])
@@ -1581,7 +1585,7 @@ class YDL:
 		print("Edit chapter information")
 		print()
 
-		for ytid in self.args.chapter_edit:
+		for ytid in ytids:
 			print("%s - %s" % (ytid, dat[ytid]['title']))
 
 			while True:
@@ -1679,7 +1683,11 @@ class YDL:
 		print("Checking that videos are present")
 		print()
 
-		for ytid in self.args.chapterize:
+		# Unescape = to - for leading character
+		ytids = list(self.args.chapterize)
+		ytids = ['-' + _[1:] for _ in ytids if _[0] == '='] + [_ for _ in ytids if _[0] != '=']
+
+		for ytid in ytids:
 			print(ytid)
 
 			row = self.db.v.select_one('*', '`ytid`=?', [ytid])
@@ -1717,7 +1725,7 @@ class YDL:
 		print("Chapterize")
 		print()
 
-		for ytid in self.args.chapterize:
+		for ytid in ytids:
 			print("%s -- %s" % (ytid, dat[ytid]['title']))
 
 			fname = dat[ytid]['path']
@@ -1750,6 +1758,10 @@ class YDL:
 		ytid = self.args.split[0]
 		fmt = self.args.split[1]
 		outfmt = self.args.split[2]
+
+		# Unescape = to - for leading character
+		if ytid[0] == '=':
+			ytid = '-' + ytid[1:]
 
 		# Check that format is ok
 		recognized_formats = ('mkv', 'mp3', 'ogg')
@@ -1942,6 +1954,10 @@ class YDL:
 		ytid = self.args.split[0]
 		fmt = self.args.split[1]
 		outfmt = self.args.split[2]
+
+		# Unescape = to - for leading character
+		if ytid[0] == '=':
+			ytid = '-' + ytid[1:]
 
 		# Check that format is ok
 		recognized_formats = ('mp3', 'ogg')
