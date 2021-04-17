@@ -883,6 +883,7 @@ class YDL:
 		if row['duration']:
 			dur = sec_str(row['duration'])
 
+
 		inf = [
 			['YTID', row['ytid']],
 			['Title', row['title']],
@@ -899,6 +900,23 @@ class YDL:
 			['Exists?', exists],
 			['Size', size],
 		]
+		if row['chapters'] is not None:
+			p = os.getcwd() + '/CHAPTERIZED/' + row['ytid'] + '.chapters.mkv'
+
+			s = os.getcwd() + '/SPLIT/' + row['ytid'] + '/'
+
+			inf += [
+				['Has Chapter Info?', True],
+				['Chapterize File', p],
+				['Chapterize File Exists?', os.path.exists(p)],
+				['Split Directory', s],
+				['Split Directory Exists?', os.path.exists(s)],
+			]
+		else:
+			inf += [
+				['Has Chapter Info?', False],
+			]
+
 		print_2col(inf)
 
 	def skip(self):
