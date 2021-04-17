@@ -547,12 +547,6 @@ class YDL:
 		#if type(self.args.stride) is list:
 		#	_main_stride(self.args, self.db)
 
-		if type(self.args.showpath) is list:
-			self.showpath()
-
-		if type(self.args.list) is list or type(self.args.listall) is list:
-			self.list()
-
 		if type(self.args.add) is list:
 			self.add()
 
@@ -568,17 +562,23 @@ class YDL:
 		if type(self.args.alias) is list:
 			self.alias()
 
+		if self.args.update_names is not False:
+			self.updatenames()
+
 		if type(self.args.info) is list:
 			self.info()
+
+		if type(self.args.showpath) is list:
+			self.showpath()
+
+		if type(self.args.list) is list or type(self.args.listall) is list:
+			self.list()
 
 		if self.args.sync is not False or self.args.sync_list is not False:
 			self.sync_list()
 
 		if self.args.sync is not False or self.args.sync_videos is not False:
 			self.sync_videos()
-
-		if self.args.update_names is not False:
-			self.updatenames()
 
 		if self.args.download is not False:
 			self.download()
