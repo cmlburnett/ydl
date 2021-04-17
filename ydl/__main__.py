@@ -77,6 +77,7 @@ from .util import ytid_hash, ytid_hash_remap
 from .util import inputopts
 from .util import print_2col
 from .util import title_to_name
+from .util import N_formatter
 
 from .fuse import ydl_fuse
 
@@ -523,6 +524,7 @@ class YDL:
 		p.add_argument('--album', default=False, help="Set album, if splitting to audio file")
 		p.add_argument('--year', default=False, help="Set year, if splitting to audio file")
 		p.add_argument('--genre', default=False, help="Set genre, if splitting to audio file")
+		p.add_argument('--format-name', default=False, help="Format the name string (eg, '{N} {name}, if splitting to audio file")
 
 		return p.parse_args()
 
@@ -1943,7 +1945,14 @@ class YDL:
 		while num in out:
 			parms = out[num]['parms']
 			fname = out[num]['fname']
-			self._tag_file(fmt, parms, fname)
+
+			# If the name format is specified, then pass that
+			# Eg, Subaru requires the track number to be in the title as it alpha sorts by title and ignores the track number
+			if self.args.format_name:
+				self._tag_file(fmt, parms, fname, format_name=self.args.format_name)
+			else:
+				# Use default name formatting
+				self._tag_file(fmt, parms, fname)
 
 			num += 1
 
@@ -2087,7 +2096,7 @@ class YDL:
 
 
 	@classmethod
-	def _tag_file(cls, fmt, parms, fname):
+	def _tag_file(cls, fmt, parms, fname, format_name="{title}"):
 		"""
 		Tag @fname with data from @parms.
 		@fmt provides the means to know what tagging program to use.
@@ -2112,7 +2121,9 @@ class YDL:
 			if 'total' in parms:
 				id3tag.append('--total=%d' % parms['total'])
 			if 'name' in parms:
-				id3tag.append('--song=%s' % parms['name'])
+				# Format title as instructed
+				v = N_formatter().format(format_name, **parms)
+				id3tag.append('--song=%s' % v)
 
 			args = ['id3tag'] + id3tag + [fname]
 			print(" ".join(args))
@@ -2143,7 +2154,10 @@ class YDL:
 				print(" ".join(args))
 				subprocess.run(args)
 			if 'name' in parms:
-				args = ['vorbiscomment', '-w', '-t', 'TITLE=%s' % parms['name'], fname]
+				# Format title as instructed
+				v = N_formatter().format(format_name, **parms)
+
+				args = ['vorbiscomment', '-w', '-t', 'TITLE=%s' % v, fname]
 				print(" ".join(args))
 				subprocess.run(args)
 

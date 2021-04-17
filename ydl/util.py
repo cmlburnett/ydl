@@ -2,6 +2,7 @@
 import hashlib
 import html.parser
 import re
+import string
 import xml.etree.ElementTree as ET
 
 # Installed
@@ -326,4 +327,19 @@ def title_to_name(t):
 	t = t.strip()
 
 	return t
+
+
+class N_formatter(string.Formatter):
+	"""
+	Formats the {N} in strings to use the 'total' parameter to set the zero-padding.
+	Useful when formatting {N} into strings for music meta tags.
+	"""
+	def get_value(self, key, args, kwargs):
+		if key == 'N':
+			if 'total' in kwargs:
+				return "%0*d" % (len(str(kwargs['total'])), kwargs['N'])
+			else:
+				return kwargs['N']
+		else:
+			return super().get_value(key, args, kwargs)
 
