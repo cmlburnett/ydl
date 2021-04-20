@@ -78,6 +78,7 @@ import traceback
 import urllib
 
 # Installed
+import requests
 import ydl
 import youtube_dl
 
@@ -548,6 +549,9 @@ class YDL:
 		p.add_argument('--year', default=False, help="Set year, if splitting to audio file")
 		p.add_argument('--genre', default=False, help="Set genre, if splitting to audio file")
 		p.add_argument('--format-name', default=False, help="Format the name string (eg, '{N} {name}, if splitting to audio file")
+		p.add_argument('--caption-language', default="en", help="Specify the caption language to download. Comma-delimited if multiple. Empty string if all.")
+
+		#TODO: pull caption-language default from environmental variables (LANG, LANGUAGE)
 
 		return p.parse_args()
 
@@ -1847,6 +1851,23 @@ class YDL:
 							print("\t\t%d) %*s -- %s" % (i+1,maxlen, chap[0], chap[1]))
 
 				elif z == 'e':
+					p = self.db.get_v_fname(ytid, suffix='info.json')
+
+					chaps = ""
+					if os.path.exists(p):
+						with open(p, 'r') as f:
+							txt = f.read()
+						o = json.loads(txt)
+						if 'chapters' in o and o['chapters'] is not None:
+							chaps = "# Chapter information obtained from info.json (yank and paste and strip off leading #):\n"
+							for c in o['chapters']:
+								s = sec_str(c['start_time'])
+								chaps += "# %s\t%s\n" % (s, c['title'])
+						else:
+							chaps = "# No chapter information found in info.json file (%s)\n" % p
+					else:
+						chaps = "# No chapter information found in info.json file (file not found)\n"
+
 					with tempfile.NamedTemporaryFile(mode='w+') as f:
 						f.write("# %s\n" % ytid)
 						f.write("#  Title:      %s\n" % dat[ytid]['title'])
@@ -1859,6 +1880,11 @@ class YDL:
 						f.write("# Every line with # is discarded.\n")
 						f.write("# Empty lines are ignored\n")
 						f.write("#\n")
+
+						if len(chaps):
+							f.write(chaps)
+							f.write("#\n")
+
 						f.write("# HH:MM:SS			Title\n")
 						f.write("\n")
 
@@ -2864,6 +2890,16 @@ def _download_video(d, args, ytid, row):
 		d.v.update({"rowid": row['rowid']}, dat)
 		d.commit()
 
+	lang = args.caption_language
+	# Empty is all languages
+	if not len(lang):
+		lang = None
+	else:
+		lang = lang.split(',')
+
+	_download_captions(d, args, ytid, row, alias, lang)
+	_download_update_chapters(d, args, ytid, row, alias)
+
 def _download_video_TEMP(d, args, ytid, row, alias):
 	"""Download to TEMP-YTID first, then renamed based on info.json file that gets downloaded"""
 
@@ -3030,6 +3066,90 @@ def _download_video_known(d, args, ytid, row, alias):
 		'utime': _now()
 	}
 	return dat
+
+def _download_captions(d, args, ytid, row, alias, lang):
+	"""
+	Downloads captions
+	"""
+	# Coerce to a list
+	if type(lang) == str:
+		lang = [lang]
+
+	print("\t\tLooking for captions")
+	try:
+		# Format name
+		path = db.format_v_fname(row['dname'], row['name'], alias, ytid, 'info.json')
+
+		if not os.path.exists(path):
+			print("\t\t\tinfo.json not found")
+			# um, ok, just bail
+			return
+
+		with open(path, 'r') as f:
+			txt = f.read()
+		o = json.loads(txt)
+
+		if 'automatic_captions' in o:
+			if lang is None:
+				# Get all languages
+				lang = o['automatic_captions'].keys()
+
+			for l in lang:
+				if l in o['automatic_captions']:
+					for subo in o['automatic_captions'][l]:
+						url = subo['url']
+						ext = subo['ext']
+
+						r = requests.get(url)
+						mypath = path.replace('info.json', 'caption.' + l + '.' + ext)
+
+						# Don't get if already there, unless being forced
+						if os.path.exists(mypath) and not args.force:
+							print("\t\t\tFound captions for lang '%s' type %s, skipping" % (l,ext))
+						else:
+							print("\t\t\tWriting automated captions to %s for lang '%s' type %s" % (mypath,l,ext))
+							with open(mypath, 'w') as f:
+								f.write(r.text)
+	except:
+		traceback.print_exc()
+		return
+
+def _download_update_chapters(d, args, ytid, row, alias):
+	print("\t\tLooking for chapters")
+	try:
+		row_v = d.v.select_one('chapters', 'ytid=?', [ytid])
+		if row_v is not None and row_v['chapters'] is not None:
+			print("\t\t\tChapters already found in video, skipping info.json search")
+			return
+
+		# Format name
+		path = db.format_v_fname(row['dname'], row['name'], alias, ytid, 'info.json')
+
+		with open(path, 'r') as f:
+			txt = f.read()
+		o = json.loads(txt)
+
+		chaps = []
+		if 'chapters' in o:
+			for c in o['chapters']:
+				s = c['start_time']
+				e = c['end_time']
+				t = c['title']
+
+				s_str = sec_str(s)
+
+				if len(chaps) == 0 and s_str != '0:00':
+					chaps.append( ('0:00', 'Start') )
+
+				chaps.append( (sec_str(s),t) )
+		print("\t\t\tInserting %d chapters: %s" % (len(chaps), chaps))
+
+		d.begin()
+		d.v.update({'ytid': ytid}, {'chapters': json.dumps(chaps)})
+		d.commit()
+	except:
+		traceback.print_exc()
+		return
 
 
 def _main_stride(args, d):
