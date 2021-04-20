@@ -3056,6 +3056,44 @@ def _download_video_known(d, args, ytid, row, alias):
 
 	try:
 		ydl.download(row['ytid'], fname, dname, rate=rate)
+	except youtube_dl.utils.DownloadError as e:
+		txt = str(e)
+		if not args.noautosleep:
+			if 'will begin in ' in txt:
+				print("\t\tVideo not available yet (%s)" % txt)
+				parts = txt.split('will begin in ')
+			elif 'Premieres in ' in txt:
+				print("\t\tVideo not available yet (%s)" % txt)
+				parts = txt.split('Premieres in ')
+			else:
+				print("Unrecognized time (%s), arbitrarily pcking one day" % txt)
+				parts = ['', '1 day']
+
+			parts = parts[1].split(' ')
+			num = parts[0]
+			num = int(num)
+
+			t = datetime.datetime.utcnow()
+			if 'day' in parts[1]:
+				t += datetime.timedelta(days=num)
+			elif 'hour' in parts[1]:
+				t += datetime.timedelta(hours=num)
+			elif 'minute' in parts[1]:
+				t += datetime.timedelta(minutes=num)
+			elif 'second' in parts[1]:
+				t += datetime.timedelta(seconds=num)
+			else:
+				print("Unrecognized time (%s), arbitrarily picking one day" % txt)
+				t += datetime.timedelta(days=1)
+
+			d.begin()
+			print("\t\tAuto-sleeping video until: %s" % t.strftime("%Y-%m-%d %H:%M:%S"))
+			d.v_sleep.insert(ytid=row['ytid'], t=t)
+			d.commit()
+			return None
+
+		else:
+			return None
 	except KeyboardInterrupt:
 		# Didn't complete download
 		return False
