@@ -2897,6 +2897,9 @@ def _download_video(d, args, ytid, row):
 	else:
 		lang = lang.split(',')
 
+	# Update row information just in case it got renamed and need accurate name to get info.json
+	row = d.v.select_one(['rowid','ytid','title','name','dname','ctime','atime'], 'ytid=?', [ytid])
+
 	_download_captions(d, args, ytid, row, alias, lang)
 	_download_update_chapters(d, args, ytid, row, alias)
 
