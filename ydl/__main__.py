@@ -66,6 +66,7 @@ import urllib
 
 # Installed
 import ydl
+import youtube_dl
 
 from sqlitehelper import SH, DBTable, DBCol, DBColROWID
 import mkvxmlmaker
@@ -188,6 +189,12 @@ class db(SH):
 			DBCol('name', 'text'),
 			DBCol('stride', 'int')
 		),
+
+		DBTable("v_sleep",
+			DBCol('ytid', 'text'),
+			DBCol('t', 'datetime'), # UTC time to consider it "skipped", once passed, this row should be deleted and can be treated as a normal video
+		),
+
 	]
 	def open(self, rowfactory=None):
 		ex = os.path.exists(self.Filename)
@@ -490,8 +497,11 @@ class YDL:
 		p.add_argument('--list', nargs='*', default=False, help="List of lists")
 		p.add_argument('--listall', nargs='*', default=False, help="Same as --list but will list all the videos too")
 		p.add_argument('--showpath', nargs='*', default=False, help="Show file paths for the given channels or YTID's")
-		p.add_argument('--skip', nargs='*', help="Skip the specified videos (supply no ids to get a list of skipped)")
+		p.add_argument('--skip', nargs='*', help="Skip the specified videos (supply no ids to get a list of skipped). If video is marked sleep, it will be removed from that list and marked skip.")
 		p.add_argument('--unskip', nargs='*', help="Un-skip the specified videos (supply no ids to get a list of not skipped)")
+		p.add_argument('--sleep', nargs='*', help="Sleep the specified video until the time in UTC (YYYY-MM-DD HH:MM:SS format)")
+		p.add_argument('--unsleep', nargs='*', help="Remove the specified videos from the sleep list")
+		p.add_argument('--noautosleep', action='store_true', default=False, help="If video indicates it premiers in the future, it will automatically be added to the sleep list. Pass this to disable this. Default is to auto-sleep.")
 		p.add_argument('--info', nargs='*', default=False, help="Print out information about the video")
 
 		p.add_argument('--json', action='store_true', default=False, help="Dump output as JSON")
@@ -557,6 +567,12 @@ class YDL:
 
 		if self.args.unskip is not None:
 			self.unskip()
+
+		if self.args.sleep is not None:
+			self.sleep()
+
+		if self.args.unsleep is not None:
+			self.unsleep()
 
 		if type(self.args.name) is list:
 			self.name()
@@ -733,6 +749,9 @@ class YDL:
 			self.info_videos()
 
 	def info_db(self):
+		# Prune any sleeping videos
+		pruned = self._prunesleep()
+
 		cs = self.db.c.num_rows()
 		chs = self.db.ch.num_rows()
 		us = self.db.u.num_rows()
@@ -754,6 +773,9 @@ class YDL:
 		print("\t\tDownloaded: %d (%.2f%%)" % (vs,100*vs/total))
 		vs = self.db.vnames.num_rows()
 		print("\t\tWith preferred names: %d" % vs)
+		vs = self.db.v_sleep.num_rows()
+		print("\t\tSleeping: %d" % vs)
+		print("\t\tSleeping just pruned: %d" % len(pruned))
 
 		row = self.db.execute("select sum(duration) as duration from v").fetchone()
 		days = row['duration'] / (60*60*24.0)
@@ -865,6 +887,8 @@ class YDL:
 			print("\t%s -- NOT FOUND" % ytid)
 
 	def info_v(self, ytid, row):
+		pruned = self._prunesleep()
+
 		row = self.db.v.select_one('*', '`ytid`=?', [ytid])
 		if row is None:
 			print("\t\tNot found")
@@ -878,6 +902,14 @@ class YDL:
 			size = '%s (%d bytes)' % (bytes_to_str(size), size)
 		else:
 			size = ''
+
+		row_sleep = self.db.v_sleep.select_one('t', 'ytid=?', [ytid])
+		if row_sleep is None:
+			sleep = False
+		else:
+			now = datetime.datetime.utcnow()
+			delta = row_sleep['t'] - now
+			sleep = "%s (until %s UTC, %s away)" % (True, row_sleep['t'].strftime("%Y-%m-%d %H:%M:%S"), delta)
 
 		dur = None
 		if row['duration']:
@@ -896,6 +928,7 @@ class YDL:
 			['Access Time', row['atime']],
 			['Update Time', row['utime']],
 			['Skip?', row['skip']],
+			['Sleeping?', sleep],
 			['Path', path],
 			['Exists?', exists],
 			['Size', size],
@@ -956,6 +989,9 @@ class YDL:
 				print("\t%s" % ytid)
 				row = self.db.v.select_one("rowid", "`ytid`=?", [ytid])
 				self.db.v.update({"rowid": row['rowid']}, {"skip": True})
+
+				# Delete any sleep times for this video, this will not error if no rows present
+				self.db.v_sleep.delete({'ytid': ytid})
 			self.db.commit()
 
 	def unskip(self):
@@ -991,6 +1027,154 @@ class YDL:
 				print("\t%s" % ytids)
 				row = self.db.v.select_one("rowid", "`ytid`=?", [ytid])
 				self.db.v.update({"rowid": row['rowid']}, {"skip": False})
+			self.db.commit()
+
+
+	def _prunesleep(self):
+		"""
+		Internal function to check sleep tables for things to prune.
+		"""
+		fmt = "%Y-%m-%d %H:%M:%S"
+
+		res = self.db.v_sleep.select(['rowid','ytid','t'], order="t asc")
+		rows = [dict(_) for _ in res]
+
+		now = datetime.datetime.utcnow()
+
+		prune = []
+		for row in rows:
+			# Next row, and all subsequent rows, are after now and won't be pruned
+			if row['t'] > now:
+				break
+
+			prune.append(row)
+
+		if len(prune):
+			print("Auto-pruning sleep times and will be available immediately for actions:")
+
+			self.db.begin()
+			for row in prune:
+				print("\t%s -- %s" % (row['ytid'], row['t'].strftime(fmt)))
+				self.db.v_sleep.delete({'rowid': row['rowid']})
+			self.db.commit()
+
+			print("")
+			print("")
+
+		return [_['ytid'] for _ in prune]
+
+	def sleep(self):
+		"""
+		Marks videos to sleep until the given date.
+		"""
+
+		fmt = "%Y-%m-%d %H:%M:%S"
+
+		pruned = self._prunesleep()
+
+		if len(self.args.sleep) == 0:
+			res = self.db.v_sleep.select("*", order="t asc")
+			rows = [dict(_) for _ in res]
+
+			print("%d on the sleep list" % len(rows))
+			for row in rows:
+				print("\t%12s -- %s" % (row['ytid'], row['t'].strftime(fmt)))
+
+		elif len(self.args.sleep) == 1:
+			ytid = self.args.sleep[0]
+
+			now = datetime.datetime.utcnow()
+
+			print("Checking sleep list: %s" % ytid)
+			if ytid in pruned:
+				print("\tVideo exceeded sleep time and was pruned")
+			else:
+				print("\tCurrent: %s (UTC)" % now.strftime(fmt))
+
+				row = self.db.v_sleep.select_one(['rowid','t'], "`ytid`=?", [self.args.sleep[0]])
+				if row is None:
+					print("\tNOT LISTED")
+				else:
+					print("\tSleep: %s (UTC)" % row['t'].strftime(fmt))
+					print("\tSleep remaining: %s" % (row['t'] - now,))
+
+		elif len(self.args.sleep) == 2:
+			ytid = self.args.sleep[0]
+			t = self.args.sleep[1]
+
+			if '+' in t:
+				# Specifying a relative date (eg, "d+10" for 10 days from now, "h+10" for 10 hours from now)
+
+				if t[0] == 'd':
+					# Current time plus X days
+					t = datetime.datetime.utcnow() + datetime.timedelta(days=int(t[2:]))
+				elif t[0] == 'h':
+					# Current time plus X hours
+					t = datetime.datetime.utcnow() + datetime.timedelta(hours=int(t[2:]))
+				elif t[0] == 'm':
+					# Current time plus X minutes
+					t = datetime.datetime.utcnow() + datetime.timedelta(minutes=int(t[2:]))
+				elif t[0] == 's':
+					# Current time plus X seconds
+					t = datetime.datetime.utcnow() + datetime.timedelta(seconds=int(t[2:]))
+				else:
+					print("Unrecognized relative time format: %s" % t)
+			else:
+				# Absolute time format
+				t = datetime.datetime.strptime(t, fmt)
+
+			print("Adding to the sleep list: %s" % ytid)
+			print("\tCurrent: %s (UTC)" % datetime.datetime.utcnow().strftime(fmt))
+			print("\tSleep: %s (UTC)" % t.strftime(fmt))
+
+			if ytid in pruned:
+				print("\tVideo exceeded sleep time and was pruned, but re-added it back")
+
+			row = self.db.v_sleep.select_one(['rowid','t'], "`ytid`=?", [self.args.sleep[0]])
+			if row is not None:
+				print("\tAlready listed to sleep until %s, will alter sleep time" % row['t'].strftime(fmt))
+
+				# Update the time
+				self.db.begin()
+				self.db.v_sleep.update({'rowid': row['rowid']}, {'t': t})
+				self.db.commit()
+			else:
+				# Insert the time
+				self.db.begin()
+				self.db.v_sleep.insert(ytid=ytid, t=t)
+				self.db.commit()
+
+	def unsleep(self):
+		"""
+		Remove videos from sleep list.
+		Any videos provided that aren't marked for sleeping will be silently ignored.
+		"""
+		pruned = self._prunesleep()
+
+		print("Removing the following videos from the sleep list:")
+
+		if len(self.args.unsleep) == 0:
+			print("")
+		elif len(self.args.unsleep) == 1 and self.args.unsleep == '*':
+			res = self.db.v_sleep.select(['rowid','ytid','t'])
+			rows = [dict(_) for _ in res]
+
+			self.db.begin()
+			for row in rows:
+				print("\t%s" % row['ytid'])
+				self.db.v_sleep.delete({'rowid': row['rowid']})
+
+			self.db.commit()
+
+		else:
+			self.db.begin()
+			for ytid in self.args.unsleep:
+				if ytid in pruned:
+					print("\t%s (auto-pruned above)" % ytid)
+				else:
+					print("\t%s" % ytid)
+					self.db.v_sleep.delete({'ytid': ytid})
+
 			self.db.commit()
 
 	def name(self):
@@ -1097,6 +1281,7 @@ class YDL:
 				raise ValueError("Alias name already used for a user: %s" % rows[0]['name'])
 
 
+			# FIXME: changing alias to a second alias doesn't fix v.dname, but does fix ch.alias and the directory name
 
 			pref = db.alias_coerce(self.args.alias[1])
 			if pref != self.args.alias[1]:
@@ -1161,9 +1346,13 @@ class YDL:
 		List the videos for the YTID's provided in @ytids.
 		"""
 
+		pruned = self._prunesleep()
+
+
 		# Count number of videos that exist
 		counts = 0
 		skipped = 0
+		sleeping = 0
 
 		ytids_str = list_to_quoted_csv(ytids)
 
@@ -1190,6 +1379,14 @@ class YDL:
 				skipped += 1
 				continue
 
+			row_sleep = self.db.v_sleep.select_one('t', 'ytid=?', [ytid])
+			if row_sleep is not None:
+				now = datetime.datetime.utcnow()
+				delta = row_sleep['t'] - now
+				print("\t\t%s: L (until %s UTC, %s away)" % (ytid, row_sleep['t'], delta))
+				sleeping += 1
+				continue
+
 			# Check if there's an alias, otherwise format_v_fname takes None for the value
 			alias = None
 			if ytid in aliases:
@@ -1214,8 +1411,9 @@ class YDL:
 					print("\t\t%s:   %s (%s)" % (ytid, t, sec_str(row['duration'])))
 
 		print()
-		print("\t\tSkipped: %d of %d" % (skipped, len(ytids)))
-		print("\t\tExists: %d of %d non-skipped" % (counts, len(ytids)-skipped))
+		print("\t\tSkipped (S): %d of %d" % (skipped, len(ytids)))
+		print("\t\tSleeping (L): %d of %d" % (sleeping, len(ytids)))
+		print("\t\tExists (E): %d of %d non-skipped, non-sleeping" % (counts, len(ytids)-skipped-sleeping))
 
 	def _list(self, sub_d, col_name):
 		where = ""
@@ -1269,6 +1467,8 @@ class YDL:
 			print()
 
 	def sync_list(self):
+		pruned = self._prunesleep()
+
 		filt = None
 		if type(self.args.sync) is list:		filt = self.args.sync
 		if type(self.args.sync_list) is list:	filt = self.args.sync_list
@@ -1296,6 +1496,8 @@ class YDL:
 		Sync all videos in the database @d and if @ignore_old is True then don't sync
 		those videos that have been sync'ed before.
 		"""
+
+		pruned = self._prunesleep()
 
 		filt = None
 		if type(self.args.sync) is list:			filt = self.args.sync
@@ -1400,6 +1602,8 @@ class YDL:
 		summary['done'].append(ytid)
 
 	def fuse(self):
+		pruned = self._prunesleep()
+
 		# Get mount point
 		mnt = self.args.fuse[0]
 
@@ -1438,6 +1642,8 @@ class YDL:
 		ydl_fuse(self.db, mnt, rootbase, allow_other=True)
 
 	def merge_playlist(self):
+		pruned = self._prunesleep()
+
 		dname = os.path.dirname(self.db.Filename) + '/MERGED'
 		if not os.path.exists(dname):
 			os.mkdir(dname)
@@ -1560,6 +1766,8 @@ class YDL:
 			print("\tMERGED/%s" % fname_chapsmkv)
 
 	def chapter_edit(self):
+		pruned = self._prunesleep()
+
 		abort = False
 
 		dat = {}
@@ -1697,6 +1905,8 @@ class YDL:
 				print()
 
 	def chapterize(self):
+		pruned = self._prunesleep()
+
 		dname = os.path.dirname(self.db.Filename) + '/CHAPTERIZED'
 		if not os.path.exists(dname):
 			os.mkdir(dname)
@@ -1772,6 +1982,8 @@ class YDL:
 			subprocess.run(args)
 
 	def split(self):
+		pruned = self._prunesleep()
+
 		abort = False
 
 		dat = {}
@@ -1975,6 +2187,8 @@ class YDL:
 			num += 1
 
 	def convert(self):
+		pruned = self._prunesleep()
+
 		abort = False
 
 		dat = {}
@@ -2225,6 +2439,8 @@ class YDL:
 		print("Changed: %d" % len(summary['change']))
 
 	def download(self):
+		pruned = self._prunesleep()
+
 		filt = []
 		if type(self.args.download) is list and len(self.args.download):
 			filt = self.args.download
@@ -2600,6 +2816,22 @@ def _download_video(d, args, ytid, row):
 	if row['dname'] is None:
 		raise ValueError("Expected dname to be set for ytid '%s'" % row['dname'])
 
+	row_sleep = d.v_sleep.select_one(['rowid','t'], 'ytid=?', [ytid])
+	if row_sleep is not None:
+		# Double check as downloading previous videos may have delayed this video such that
+		# the initial pruning may have been just before the sleep time
+		now = datetime.datetime.utcnow()
+		if row_sleep['t'] > now:
+			# Still sleeping
+			delta = row_sleep['t'] - now
+			print("\t\tVideo sleeping until %s UTC (%s away), skipping for now" % (row_sleep['t'].strftime("%Y-%m-%d %H:%M:%S"), delta))
+			return
+		else:
+			# Remove sleep and carry on
+			d.begin()
+			d.v_sleep.delete({'rowid': row_sleep['rowid']})
+			d.commit()
+
 	# If hasn't been updated, then can do sync_videos(ytid) or just download it with ydl
 	# then use the info.json file to update the database (saves a call to youtube)
 	if row['atime'] is None:
@@ -2649,6 +2881,44 @@ def _download_video_TEMP(d, args, ytid, row, alias):
 			ydl.download(row['ytid'], fname, dname)
 		else:
 			ydl.download(row['ytid'], fname, dname, rate=rate)
+	except youtube_dl.utils.DownloadError as e:
+		txt = str(e)
+		if not args.noautosleep:
+			if 'will begin in ' in txt:
+				print("\t\tVideo not available yet (%s)" % txt)
+				parts = txt.split('will begin in ')
+			elif 'Premieres in ' in txt:
+				print("\t\tVideo not available yet (%s)" % txt)
+				parts = txt.split('Premieres in ')
+			else:
+				print("Unrecognized time (%s), arbitrarily pcking one day" % txt)
+				parts = ['', '1 day']
+
+			parts = parts[1].split(' ')
+			num = parts[0]
+			num = int(num)
+
+			t = datetime.datetime.utcnow()
+			if 'day' in parts[1]:
+				t += datetime.timedelta(days=num)
+			elif 'hour' in parts[1]:
+				t += datetime.timedelta(hours=num)
+			elif 'minute' in parts[1]:
+				t += datetime.timedelta(minutes=num)
+			elif 'second' in parts[1]:
+				t += datetime.timedelta(seconds=num)
+			else:
+				print("Unrecognized time (%s), arbitrarily picking one day" % txt)
+				t += datetime.timedelta(days=1)
+
+			d.begin()
+			print("\t\tAuto-sleeping video until: %s" % t.strftime("%Y-%m-%d %H:%M:%S"))
+			d.v_sleep.insert(ytid=row['ytid'], t=t)
+			d.commit()
+			return None
+
+		else:
+			return None
 	except KeyboardInterrupt:
 		# Didn't complete download
 		return False
