@@ -23,7 +23,7 @@ def sec_str(sec):
 	elif min > 0:
 		return "%d:%02d" % (min,sec)
 	else:
-		return "0:%d" % sec
+		return "0:%02d" % sec
 
 def t_to_sec(t):
 	"""
