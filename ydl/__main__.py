@@ -43,6 +43,19 @@ Common actions:
 	Un-skip a video
 		ydl --unskip btZ-VFW4wpY
 
+	To sleep a video when it is not yet released (functions like skipping until the time is lapsed)
+		ydl --sleep btZ-VFW4wpY TIME
+
+		where TIME can be absolute in YYYY-MM-DD HH:MM:SS format or relative format
+		where d+N in days, h+N in hours, m+N in minutes, s+N in seconds relative to curent time
+		and all times are in UTC.
+
+	To see all sleeping videos sorted by soonest-to-expire first
+		ydl --sleep
+
+	To un-sleep a video
+		ydl --unsleep btZ-VFW4wpY
+
 	Mount a FUSE filesystem to list channels and videos
 		ydl --fuse /mnt/ydl
 

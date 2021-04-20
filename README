@@ -51,6 +51,15 @@ If there's a video to skip because it's private, requires payment, you don't car
 
 and --unskip to take it off the skip list.
 
+If there's a video that is not yet released, sleeping is a way to temporarily skip the video
+
+	python -m ydl --sleep _fRSaLAEW2s d+10
+
+and --unsleep to take it off the sleep list. Accepted time formats are absolute time YYYY-MM-SS HH:MM:SS in UTC, or in relative
+format of d+N for days, h+N for hours, m+N for minutes, and s+N for seconds.
+Videos not yet released are automatically marked as sleeping based on the time indicated in the error message.
+Pass --noautosleep to disable automatically creating these sleep times.
+
 Other functions:
 
 	--name					Set the name for a video to something other than generated from the video title
@@ -60,6 +69,7 @@ Other functions:
 	--force					Force an action, which bypasses some checks to be more efficient
 	--no-rss				Skip checking RSS for a --sync-list action
 	--notify				Uses Pushover to send notifications to your phone, etc (configure with ~/.pushoverrc) when things finish
+	--noautosleep			If a video is found to be not released yet, a sleep timer is automatically set. This turns that off.
 
 	--merge-playlist		Merge an entire playlist into a single video using each playlist item as a chapter in the final video
 	--chapter-edit			Edit chapter information for a video
