@@ -1089,9 +1089,11 @@ class YDL:
 			res = self.db.v_sleep.select("*", order="t asc")
 			rows = [dict(_) for _ in res]
 
+			now = datetime.datetime.utcnow()
 			print("%d on the sleep list" % len(rows))
 			for row in rows:
-				print("\t%12s -- %s" % (row['ytid'], row['t'].strftime(fmt)))
+				delta = row['t'] - now
+				print("\t%12s -- %s (%s away)" % (row['ytid'], row['t'].strftime(fmt), delta))
 
 		elif len(self.args.sleep) == 1:
 			ytid = self.args.sleep[0]
