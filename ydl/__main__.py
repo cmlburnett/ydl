@@ -3142,11 +3142,15 @@ def _download_update_chapters(d, args, ytid, row, alias):
 					chaps.append( ('0:00', 'Start') )
 
 				chaps.append( (sec_str(s),t) )
-		print("\t\t\tInserting %d chapters: %s" % (len(chaps), chaps))
 
-		d.begin()
-		d.v.update({'ytid': ytid}, {'chapters': json.dumps(chaps)})
-		d.commit()
+		if len(chaps) != 0:
+			print("\t\t\tInserting %d chapters: %s" % (len(chaps), chaps))
+			d.begin()
+			d.v.update({'ytid': ytid}, {'chapters': json.dumps(chaps)})
+			d.commit()
+		else:
+			print("\t\t\tNo chapter information")
+
 	except:
 		traceback.print_exc()
 		return
