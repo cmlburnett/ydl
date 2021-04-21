@@ -2491,6 +2491,7 @@ class YDL:
 		print("Download videos")
 		try:
 			ret = download_videos(self.db, self.args, filt, ignore_old=self.args.ignore_old)
+
 		except Exception as e:
 			ret = sys.exc_info()
 
@@ -2839,7 +2840,12 @@ def download_videos(d, args, filt, ignore_old):
 
 		print("\t%d of %d: %s" % (i+1, len(rows), ytid))
 
-		_download_video(d, args, ytid, row)
+		ret = _download_video(d, args, ytid, row)
+		if ret == False:
+			return False
+		elif ret is None:
+			# Next video
+			continue
 
 	# Completed download
 	return True
@@ -2884,11 +2890,20 @@ def _download_video(d, args, ytid, row):
 	else:
 		dat = _download_video_known(d, args, ytid, row, alias)
 
-	if dat is not None:
+	if isinstance(dat, dict):
 		# Update data
 		d.begin()
 		d.v.update({"rowid": row['rowid']}, dat)
 		d.commit()
+	elif dat == False:
+		# This on KeyboardInterrupt
+		return False
+	elif dat is None:
+		# Some other non-fatal exception, continue t next video
+		return None
+	else:
+		raise Exception("Unexpected _download_video_* return, aborting: '%s'" % str(dat))
+
 
 	lang = args.caption_language
 	# Empty is all languages
