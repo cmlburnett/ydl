@@ -1836,7 +1836,7 @@ class YDL:
 			print("%s - %s" % (ytid, dat[ytid]['title']))
 
 			while True:
-				z = inputopts("\tChapters: (p)rint, (e)dit, (d)escription dump, (C)continue, (q)uit? ")
+				z = inputopts("\tChapters: (p)rint, (e)dit, (d)escription dump, add (o)ffset, (C)continue, (q)uit? ")
 				if z == 'p':
 					if dat[ytid]['chapters'] is None:
 						print("\tNo chapter data")
@@ -1941,6 +1941,103 @@ class YDL:
 					break
 				elif z == 'q':
 					sys.exit(0)
+				elif z == 'o':
+					while True:
+						print("Adding an offset can be arbitrary (input an integer number of seconds to shift) or")
+						print("specify a chapter's new offset to calculate the offset to shift all chapters.")
+						z = inputopts("\tOffset: (a)rbitrary, (c)hapter time, (b)ack to main menu")
+						if z == 'a':
+							if dat[ytid]['chapters'] is None:
+								print("\tNo chapter data")
+								print("Cannot adjust offset")
+								break
+							else:
+								chaps = dat[ytid]['chapters']
+								maxlen = 0
+								for chap in chaps:
+									maxlen = max(maxlen, len(chap[0]))
+
+								print()
+								print("Current chapter information")
+								for i,chap in enumerate(chaps):
+									print("\t\t%d) %*s -- %s" % (i+1,maxlen, chap[0], chap[1]))
+
+								sec = input("Enter number of seconds: ")
+								sec = int(sec)
+
+								print()
+								print("Proposed chapter information")
+								for i,chap in enumerate(chaps):
+									c = sec_str(sec + t_to_sec(chap[0]))
+									print("\t\t%d) %*s -- %s" % (i+1,maxlen, c, chap[1]))
+
+								z = inputopts("(A)ccept or (r)eject change")
+								if z == 'a':
+									# Adjust times
+									for i,chap in enumerate(chaps):
+										chap[0] = sec_str(sec + t_to_sec(chap[0]))
+
+									self.db.begin()
+									self.db.v.update({'ytid': ytid}, {'chapters': json.dumps(chaps)})
+									self.db.commit()
+									dat[ytid]['chapters'] = chaps
+
+								elif z == 'r':
+									continue
+								else:
+									raise ValueError("Unrecognized input: %s" % z)
+							pass
+						elif z == 'c':
+							if dat[ytid]['chapters'] is None:
+								print("\tNo chapter data")
+								print("Cannot adjust offset")
+								break
+							else:
+								chaps = dat[ytid]['chapters']
+								maxlen = 0
+								for chap in chaps:
+									maxlen = max(maxlen, len(chap[0]))
+
+								print()
+								print("Current chapter information")
+								for i,chap in enumerate(chaps):
+									print("\t\t%d) %*s -- %s" % (i+1,maxlen, chap[0], chap[1]))
+
+								cnum = input("Enter chapter number to adjust: ")
+								cnum = int(cnum)
+
+								print("\t%d) %*s -- %s" % (cnum,maxlen, chaps[cnum-1][0], chaps[cnum-1][1]))
+								sec_old = t_to_sec(chaps[cnum-1][0])
+
+								sec = input("Enter new time for this chapter in HH:MM:SS format: ")
+								sec = t_to_sec(sec)
+								delta = sec - sec_old
+
+								if delta >= 0:
+									print("Change in seconds: +%d" % delta)
+								else:
+									print("Change in seconds: %d" % delta)
+
+								print()
+								print("Proposed chapter information")
+								for i,chap in enumerate(chaps):
+									c = sec_str(delta + t_to_sec(chap[0]))
+									print("\t\t%d) %*s -- %s" % (i+1,maxlen, c, chap[1]))
+
+								z = inputopts("(A)ccept or (r)eject change")
+								if z == 'a':
+									# Adjust times
+									for i,chap in enumerate(chaps):
+										chaps[i][0] = sec_str(delta + t_to_sec(chap[0]))
+
+									self.db.begin()
+									self.db.v.update({'ytid': ytid}, {'chapters': json.dumps(chaps)})
+									self.db.commit()
+									dat[ytid]['chapters'] = chaps
+						elif z == 'b':
+							break
+						else:
+							raise ValueError("Unrecognized input: %s" % z)
 				else:
 					raise ValueError("Unrecognized input: %s" % z)
 				print()
