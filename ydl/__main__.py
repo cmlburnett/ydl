@@ -3131,7 +3131,46 @@ def _download_captions(d, args, ytid, row, alias, lang):
 	if type(lang) == str:
 		lang = [lang]
 
-	print("\t\tLooking for captions")
+	print("\t\tLooking for subtitles")
+	try:
+		# Format name
+		path = db.format_v_fname(row['dname'], row['name'], alias, ytid, 'info.json')
+
+		if not os.path.exists(path):
+			print("\t\t\tinfo.json not found")
+			# um, ok, just bail
+			return
+
+		with open(path, 'r') as f:
+			txt = f.read()
+		o = json.loads(txt)
+
+		if 'subtitles' in o:
+			if lang is None:
+				# Get all languages
+				lang = o['subtitles'].keys()
+
+			for l in lang:
+				if l in o['subtitles']:
+					for subo in o['subtitles'][l]:
+						url = subo['url']
+						ext = subo['ext']
+
+						r = requests.get(url)
+						mypath = path.replace('info.json', 'subtitle.' + l + '.' + ext)
+
+						# Don't get if already there, unless being forced
+						if os.path.exists(mypath) and not args.force:
+							print("\t\t\tFound subtitles for lang '%s' type %s, skipping" % (l,ext))
+						else:
+							print("\t\t\tWriting subtitles to %s for lang '%s' type %s" % (mypath,l,ext))
+							with open(mypath, 'w') as f:
+								f.write(r.text)
+	except:
+		traceback.print_exc()
+		return
+
+	print("\t\tLooking for [automatic] captions")
 	try:
 		# Format name
 		path = db.format_v_fname(row['dname'], row['name'], alias, ytid, 'info.json')
