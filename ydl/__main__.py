@@ -2956,7 +2956,7 @@ def download_videos(d, args, filt, ignore_old):
 	skipped = []
 	# Check if playlist is skipped
 	for ytid in filt:
-		row = self.pl.select_one('skip', '`ytid`=?', [ytid])
+		row = d.pl.select_one('skip', '`ytid`=?', [ytid])
 		if row is not None and row['skip']:
 			print("\tPlaylist %s SKIPPED" % ytid)
 			skipped.append(ytid)
@@ -3120,7 +3120,10 @@ def _download_video_TEMP(d, args, ytid, row, alias):
 	except youtube_dl.utils.DownloadError as e:
 		txt = str(e)
 		if not args.noautosleep:
-			if 'will begin in ' in txt:
+			if 'begin in a few moments' in txt:
+				print("\t\tVideo live shortly (%s)" % txt)
+				parts = ['', '1 hour']
+			elif 'will begin in ' in txt:
 				print("\t\tVideo not available yet (%s)" % txt)
 				parts = txt.split('will begin in ')
 			elif 'Premieres in ' in txt:
