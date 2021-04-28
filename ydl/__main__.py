@@ -1358,6 +1358,7 @@ class YDL:
 		self._list(self.db.u, 'name')
 		self._list(self.db.c, 'name')
 		self._list(self.db.ch, 'name')
+		self._list(self.db.ch, 'alias')
 		self._list(self.db.pl, 'ytid')
 
 	def listall(self, ytids):
