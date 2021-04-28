@@ -267,6 +267,21 @@ class db(SH):
 
 
 	def get_v(self, filt, ignore_old):
+		skipped = []
+		# Check if playlist is skipped
+		for ytid in filt:
+			row = self.pl.select_one('skip', '`ytid`=?', [ytid])
+			if row is not None and row['skip']:
+				print("\tPlaylist %s SKIPPED" % ytid)
+				skipped.append(ytid)
+		# Remove playlist if pl.skip is true
+		for ytid in skipped:
+			filt.remove(ytid)
+
+		if len(skipped) and not len(filt):
+			# Everything was skipped
+			return []
+
 		where = ""
 
 		if type(filt) is list and len(filt):
@@ -969,25 +984,45 @@ class YDL:
 
 		print_2col(inf)
 
+	def _show_skip(self):
+		res = self.db.v.select(["ytid","dname","name"], "`skip`=?", [True])
+		ytids = [dict(_) for _ in res]
+		ytids = sorted(ytids, key=lambda _:_['dname']+'/'+_['ytid'])
+
+		if self.args.json:
+			print(json.dumps(ytids))
+		elif self.args.xml:
+			raise NotImplementedError("XML not implemented yet")
+		else:
+			# FIXME: abide by --json and --xml
+			print("Videos marked skip (%d):" % len(ytids))
+			for row in ytids:
+				if row['name'] is None:
+					print("\t%s -- %s/%s" % (row['ytid'], row['dname'], '?'))
+				else:
+					print("\t%s -- %s/%s" % (row['ytid'], row['dname'], row['name']))
+
+		res = self.db.pl.select("ytid", "`skip`=?", [True])
+		ytids = [_['ytid'] for _ in res]
+		ytids = sorted(ytids)
+
+		if self.args.json:
+			print(json.dumps(ytids))
+		elif self.args.xml:
+			raise NotImplementedError("XML not implemented yet")
+		else:
+			# FIXME: abide by --json and --xml
+			print("Playlists marked skip (%d):" % len(ytids))
+			for ytid in ytids:
+				print("\t%s" % ytid)
+
 	def skip(self):
 		"""
 		List or add videos to the skip list.
 		"""
 
 		if not len(self.args.skip):
-			res = self.db.v.select("ytid", "`skip`=?", [True])
-			ytids = [_['ytid'] for _ in res]
-			ytids = sorted(ytids)
-
-			if self.args.json:
-				print(json.dumps(ytids))
-			elif self.args.xml:
-				raise NotImplementedError("XML not implemented yet")
-			else:
-				# FIXME: abide by --json and --xml
-				print("Videos marked skip (%d):" % len(ytids))
-				for ytid in ytids:
-					print("\t%s" % ytid)
+			self._show_skip()
 		else:
 			# This could signify STDIN contains json or xml to intrepret as ytids???
 			if self.args.json:
@@ -998,17 +1033,26 @@ class YDL:
 			ytids = list(set(self.args.skip))
 			ytids = ['-' + _[1:] for _ in ytids if _[0] == '='] + [_ for _ in ytids if _[0] != '=']
 
-			print("Marking videos to skip (%d):" % len(ytids))
+			# Split into videos and playlists
+			v_ytids = [_ for _ in ytids if len(_) == 11]
+			pl_ytids= [_ for _ in ytids if len(_) != 11]
 
 
 			self.db.begin()
-			for ytid in ytids:
+			print("Marking videos to skip (%d):" % len(v_ytids))
+			for ytid in v_ytids:
 				print("\t%s" % ytid)
 				row = self.db.v.select_one("rowid", "`ytid`=?", [ytid])
 				self.db.v.update({"rowid": row['rowid']}, {"skip": True})
 
 				# Delete any sleep times for this video, this will not error if no rows present
 				self.db.v_sleep.delete({'ytid': ytid})
+
+			print("Marking playlists to skip (%d):" % len(pl_ytids))
+			for ytid in pl_ytids:
+				print("\t%s" % ytid)
+				row = self.db.pl.select_one("rowid", "`ytid`=?", [ytid])
+				self.db.pl.update({"rowid": row['rowid']}, {"skip": True})
 			self.db.commit()
 
 	def unskip(self):
@@ -1017,18 +1061,7 @@ class YDL:
 		"""
 
 		if not len(self.args.unskip):
-			res = self.db.v.select("ytid", "`skip`=?", [False])
-			ytids = [_['ytid'] for _ in res]
-			ytids = sorted(ytids)
-
-			if self.args.json:
-				print(json.dumps(ytids))
-			elif self.args.xml:
-				raise NotImplementedError("XML not implemented yet")
-			else:
-				print("Videos NOT marked skip (%d):" % len(ytids))
-				for ytid in ytids:
-					print("\t%s" % ytid)
+			self._show_skip()
 		else:
 			# This could signify STDIN contains json or xml to intrepret as ytids???
 			if self.args.json:
@@ -1037,13 +1070,24 @@ class YDL:
 				raise NotImplementedError("--xml not meaningful when removed skipped videos")
 
 			ytids = list(set(self.args.unskip))
-			print("Marking videos to not skip (%d):" % len(ytids))
+			print('ytids', ytids)
+
+			# Split into videos and playlists
+			v_ytids = [_ for _ in ytids if len(_) == 11]
+			pl_ytids= [_ for _ in ytids if len(_) != 11]
 
 			self.db.begin()
-			for ytid in ytids:
+			print("Marking videos to not skip (%d):" % len(v_ytids))
+			for ytid in v_ytids:
 				print("\t%s" % ytids)
 				row = self.db.v.select_one("rowid", "`ytid`=?", [ytid])
 				self.db.v.update({"rowid": row['rowid']}, {"skip": False})
+
+			print("Marking playlists to not skip (%d):" % len(pl_ytids))
+			for ytid in pl_ytids:
+				print("\t%s" % ytids)
+				row = self.db.pl.select_one("rowid", "`ytid`=?", [ytid])
+				self.db.pl.update({"rowid": row['rowid']}, {"skip": False})
 			self.db.commit()
 
 
@@ -1529,6 +1573,7 @@ class YDL:
 		print("Sync all videos")
 		# Get videos
 		res = self.db.get_v(filt, self.args.ignore_old)
+		rows = [_ for _ in res]
 
 		# Convert rows to dictionaries
 		rows = [dict(_) for _ in res]
@@ -1539,6 +1584,7 @@ class YDL:
 			'done': [],
 			'error': [],
 			'paymentreq': [],
+			'skip': [],
 		}
 
 		try:
@@ -2671,6 +2717,7 @@ def _sync_list(args, d, d_sub, filt, col_name, ignore_old, rss_ok, ydl_func):
 		'done': [],
 		'error': [],
 		'info': {},
+		'skip': [],
 	}
 
 	# Sync the lists
@@ -2678,6 +2725,7 @@ def _sync_list(args, d, d_sub, filt, col_name, ignore_old, rss_ok, ydl_func):
 		__sync_list(args, d, d_sub, ydl_func, c_name, rss_ok, rowid, summary)
 
 	print("\tDone: %d" % len(summary['done']))
+	print("\tSkip: %d" % len(summary['skip']))
 	print("\tError: %d" % len(summary['error']))
 	for ytid in summary['error']:
 		print("\t\t%s" % ytid)
@@ -2712,6 +2760,12 @@ def __sync_list(args, d, d_sub, f_get_list, c_name, rss_ok, rowid, summary):
 	if d_sub.Name == 'ch':
 		row = d_sub.select_one('alias', "`rowid`=?", [rowid])
 		c_name_alt = row[0]
+	elif d_sub.Name == 'pl':
+		row = d_sub.select_one('skip', "`rowid`=?", [rowid])
+		if row['skip']:
+			print("\t%s SKIPPED" % c_name)
+			summary['skip'].append(c_name)
+		return
 
 	if c_name_alt:
 		print("\t%s -> %s" % (c_name, c_name_alt))
@@ -2898,6 +2952,21 @@ def download_videos(d, args, filt, ignore_old):
 	# See how many are skipped
 	total = d.v.num_rows("`skip`=1")
 	print("\tSkipped: %d" % total)
+
+	skipped = []
+	# Check if playlist is skipped
+	for ytid in filt:
+		row = self.pl.select_one('skip', '`ytid`=?', [ytid])
+		if row is not None and row['skip']:
+			print("\tPlaylist %s SKIPPED" % ytid)
+			skipped.append(ytid)
+	# Remove playlist if pl.skip is true
+	for ytid in skipped:
+		filt.remove(ytid)
+
+	if len(skipped) and not len(filt):
+		print("All playlists skipped")
+		return
 
 
 	# Filter
