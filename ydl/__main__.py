@@ -3066,7 +3066,7 @@ def _download_video(d, args, ytid, row):
 		# This on KeyboardInterrupt
 		return False
 	elif dat is None:
-		# Some other non-fatal exception, continue t next video
+		# Some other non-fatal exception, continue to next video
 		return None
 	else:
 		raise Exception("Unexpected _download_video_* return, aborting: '%s'" % str(dat))
