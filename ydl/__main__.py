@@ -3241,7 +3241,7 @@ def _download_actual(d, ytid, fname, dname, rate=None, autosleep=True):
 			d.commit()
 			return None
 
-		if not noautosleep:
+		if autosleep:
 			if 'begin in a few moments' in txt:
 				print("\t\tVideo live shortly (%s)" % txt)
 				parts = ['', '1 hour']
