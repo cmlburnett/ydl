@@ -3109,63 +3109,19 @@ def _download_video_TEMP(d, args, ytid, row, alias):
 	if args.rate:
 		rate = args.rate[0]
 
-	# Download mkv file, description, info.json, thumbnails, etc
-	try:
-		# Escape percent signs
-		fname = fname.replace('%', '%%')
-		if rate is None:
-			ydl.download(row['ytid'], fname, dname)
-		else:
-			ydl.download(row['ytid'], fname, dname, rate=rate)
-	except youtube_dl.utils.DownloadError as e:
-		txt = str(e)
-		if not args.noautosleep:
-			if 'begin in a few moments' in txt:
-				print("\t\tVideo live shortly (%s)" % txt)
-				parts = ['', '1 hour']
-			elif 'will begin in ' in txt:
-				print("\t\tVideo not available yet (%s)" % txt)
-				parts = txt.split('will begin in ')
-			elif 'Premieres in ' in txt:
-				print("\t\tVideo not available yet (%s)" % txt)
-				parts = txt.split('Premieres in ')
-			else:
-				print("Unrecognized time (%s), arbitrarily pcking one day" % txt)
-				parts = ['', '1 day']
 
-			parts = parts[1].split(' ')
-			num = parts[0]
-			num = int(num)
-
-			t = datetime.datetime.utcnow()
-			if 'day' in parts[1]:
-				t += datetime.timedelta(days=num)
-			elif 'hour' in parts[1]:
-				t += datetime.timedelta(hours=num)
-			elif 'minute' in parts[1]:
-				t += datetime.timedelta(minutes=num)
-			elif 'second' in parts[1]:
-				t += datetime.timedelta(seconds=num)
-			else:
-				print("Unrecognized time (%s), arbitrarily picking one day" % txt)
-				t += datetime.timedelta(days=1)
-
-			d.begin()
-			print("\t\tAuto-sleeping video until: %s" % t.strftime("%Y-%m-%d %H:%M:%S"))
-			d.v_sleep.insert(ytid=row['ytid'], t=t)
-			d.commit()
-			return None
-
-		else:
-			return None
-	except KeyboardInterrupt:
-		# Didn't complete download
-		return False
-	except:
-		# Print it out to see it
-		traceback.print_exc()
-		# Skip errors, and keep downloading
+	# Finally do actual download
+	ret = _download_actual(d, row['ytid'], fname, dname, rate, not args.noautosleep)
+	if ret is None:
 		return None
+	elif ret == False:
+		return False
+	elif ret == True:
+		# Continue processing
+		pass
+	else:
+		raise NotImplementedError("Unknown return value (%s) in downloading vide %s" % (ret,row['ytid']))
+
 
 	# Look for info.json file that contains title, uplaoder, etc
 	fs = glob.glob("%s/*-%s.info.json" % (dname,ytid))
@@ -3239,12 +3195,57 @@ def _download_video_known(d, args, ytid, row, alias):
 	if args.rate:
 		rate = args.rate[0]
 
+
+	# Finally do actual download
+	ret = _download_actual(d, row['ytid'], fname, dname, rate, not args.noautosleep)
+	if ret is None:
+		return None
+	elif ret == False:
+		return False
+	elif ret == True:
+		# Continue processing
+		pass
+	else:
+		raise NotImplementedError("Unknown return value (%s) in downloading vide %s" % (ret,row['ytid']))
+
+	dat = {
+		'utime': _now()
+	}
+	return dat
+
+def _download_actual(d, ytid, fname, dname, rate=None, autosleep=True):
+	"""
+	Long chain of functions, but this actually downloads the video.
+	"""
+
+	# Download mkv file, description, info.json, thumbnails, etc
 	try:
-		ydl.download(row['ytid'], fname, dname, rate=rate)
+		# Escape percent signs
+		fname = fname.replace('%', '%%')
+		if rate is None:
+			ydl.download(ytid, fname, dname)
+		else:
+			ydl.download(ytid, fname, dname, rate=rate)
 	except youtube_dl.utils.DownloadError as e:
 		txt = str(e)
-		if not args.noautosleep:
-			if 'will begin in ' in txt:
+		if 'Video unavailable' in txt:
+			d.begin()
+			print("\t\tVideo not available, marking skip")
+			d.v.update({"ytid": ytid}, {"skip": True})
+			d.commit()
+			return None
+		elif 'access to members-only content' in txt:
+			d.begin()
+			print("\t\tVideo not available without paying, marking skip")
+			d.v.update({"ytid": ytid}, {"skip": True})
+			d.commit()
+			return None
+
+		if not noautosleep:
+			if 'begin in a few moments' in txt:
+				print("\t\tVideo live shortly (%s)" % txt)
+				parts = ['', '1 hour']
+			elif 'will begin in ' in txt:
 				print("\t\tVideo not available yet (%s)" % txt)
 				parts = txt.split('will begin in ')
 			elif 'Premieres in ' in txt:
@@ -3273,7 +3274,7 @@ def _download_video_known(d, args, ytid, row, alias):
 
 			d.begin()
 			print("\t\tAuto-sleeping video until: %s" % t.strftime("%Y-%m-%d %H:%M:%S"))
-			d.v_sleep.insert(ytid=row['ytid'], t=t)
+			d.v_sleep.insert(ytid=ytid, t=t)
 			d.commit()
 			return None
 
@@ -3288,10 +3289,7 @@ def _download_video_known(d, args, ytid, row, alias):
 		# Skip errors, and keep downloading
 		return None
 
-	dat = {
-		'utime': _now()
-	}
-	return dat
+	return True
 
 def _download_captions(d, args, ytid, row, alias, lang):
 	"""
