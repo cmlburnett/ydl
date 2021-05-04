@@ -294,6 +294,30 @@ def title_to_name(t):
 	There are several banned characters and will collapse whitespace, etc
 	"""
 
+	t = t.replace('á','a')
+	t = t.replace('é','e')
+	t = t.replace('í','i')
+	t = t.replace('ó','o')
+	t = t.replace('ú','u')
+
+	t = t.replace('Á','A')
+	t = t.replace('É','E')
+	t = t.replace('Í','I')
+	t = t.replace('Ó','O')
+	t = t.replace('Ú','U')
+
+	t = t.replace('ä','a')
+	t = t.replace('ë','e')
+	t = t.replace('ï','i')
+	t = t.replace('ö','o')
+	t = t.replace('ü','u')
+
+	t = t.replace('Ä','A')
+	t = t.replace('Ë','E')
+	t = t.replace('Ï','I')
+	t = t.replace('Ö','O')
+	t = t.replace('Ü','U')
+
 	t = t.encode('ascii', errors='ignore').decode('ascii')
 
 	# If @t supplied is empty or contains non-ascii characters,
