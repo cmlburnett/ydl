@@ -2765,7 +2765,7 @@ def __sync_list(args, d, d_sub, f_get_list, c_name, rss_ok, rowid, summary):
 		if row['skip']:
 			print("\t%s SKIPPED" % c_name)
 			summary['skip'].append(c_name)
-		return
+			return
 
 	if c_name_alt:
 		print("\t%s -> %s" % (c_name, c_name_alt))
