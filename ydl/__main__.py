@@ -406,6 +406,7 @@ def _rename_files(dname, ytid, newname, old_dname=None):
 			# or "FOO-YTID_0.JPG"
 			# or "FOO - YTID - STUFF.SFX"
 			# or "FOO - YTID - STUFF_0.JPG"
+			# or "FOO - YTID.caption.en.vtt"
 			parts = f.split(ytid)
 
 			# Sometimes this happens that the file downloaded is an MP4 or something
@@ -457,6 +458,12 @@ def _rename_files(dname, ytid, newname, old_dname=None):
 				suffix = '_4.' + last[1]
 			elif last[0].endswith('_5'):
 				suffix = '_5.' + last[1]
+			elif '.subtitle' in last[0]:
+				subparts = last[0].split('subtitle',1)
+				suffix = '.subtitle' + subparts[1] + '.' + last[1]
+			elif '.caption' in last[0]:
+				subparts = last[0].split('caption',1)
+				suffix = '.caption' + subparts[1] + '.' + last[1]
 			else:
 				suffix = '.' + last[1]
 
