@@ -47,6 +47,7 @@ def download(ytid, name, dname, write_all_thumbnails=True, add_metadata=True, wr
 		'skip_download': skip_download,
 		'outtmpl': name,
 		'ratelimit': rate,
+		'retries': 10,
 	}
 	with youtube_dl.YoutubeDL(opts) as dl:
 		# Attempt download
