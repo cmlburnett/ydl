@@ -1583,7 +1583,7 @@ class YDL:
 		rows = [_ for _ in res]
 
 		# Convert rows to dictionaries
-		rows = [dict(_) for _ in res]
+		rows = [dict(_) for _ in rows]
 		# Sort by YTID to be consistent
 		rows = sorted(rows, key=lambda x: x['ytid'])
 
