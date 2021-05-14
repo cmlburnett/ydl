@@ -198,12 +198,6 @@ class db(SH):
 			DBCol('atime', 'datetime'), # Last time the RSS feed was sync'ed
 		),
 
-		# Stride (divides a list's videos into different directories)
-		DBTable("stride",
-			DBCol('name', 'text'),
-			DBCol('stride', 'int')
-		),
-
 		DBTable("v_sleep",
 			DBCol('ytid', 'text'),
 			DBCol('t', 'datetime'), # UTC time to consider it "skipped", once passed, this row should be deleted and can be treated as a normal video
@@ -251,20 +245,6 @@ class db(SH):
 
 	def add_channel_unnamed(self, name):
 		return self.ch.insert(name=name, ctime=_now())
-
-
-	def get_stride(self, name):
-		"""
-		Gets the stride of the list, which is over how many directories the videos are spread.
-		"""
-
-		row = self.stride.select_one('stride', '`name`=?', [name])
-		if row is None:
-			# Default is one (all files in the root directory)
-			return 1
-		else:
-			return row['stride']
-
 
 	def get_v(self, filt, ignore_old):
 		skipped = []
