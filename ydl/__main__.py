@@ -545,8 +545,6 @@ class YDL:
 		p.add_argument('--force', action='store_true', default=False, help="Force the action, whatever it may pertain to")
 		p.add_argument('--no-rss', action='store_true', default=False, help="Don't use RSS to check status of lists")
 
-		#p.add_argument('--stride', nargs='+', default=False, help="Set the stride on a list. If not set, all videos will be stored in the same directory. If a stride of 10 is set, then all videos will be spread across 10 sub-directories. Stride of one stores all videos in one directory.")
-
 		p.add_argument('--sync', nargs='*', default=False, help="Sync all metadata and playlists (does not download video data)")
 		p.add_argument('--sync-list', nargs='*', default=False, help="Sync just the lists (not videos)")
 		p.add_argument('--sync-videos', nargs='*', default=False, help="Sync just the videos (not lists)")
@@ -594,9 +592,6 @@ class YDL:
 		if self.args.fuse:
 			self.fuse()
 			sys.exit()
-
-		#if type(self.args.stride) is list:
-		#	_main_stride(self.args, self.db)
 
 		if type(self.args.add) is list:
 			self.add()
@@ -3424,46 +3419,6 @@ def _download_update_chapters(d, args, ytid, row, alias):
 	except:
 		traceback.print_exc()
 		return
-
-
-def _main_stride(args, d):
-	# List name
-	name = args.stride[0]
-
-	# See what's there
-	row = d.stride.select_one(['rowid','name','stride'], '`name`=?', [name])
-
-	# Check stride of given list
-	if len(args.stride) == 1:
-		print("Stride:")
-
-		if row:
-			s = row['stride']
-		else:
-			s = 1
-
-		print("\t%s: %d" % (name, s))
-
-	# Set stride of the given list
-	elif len(args.stride) == 2:
-		print("Stride:")
-
-		stride = int(args.stride[1])
-
-		d.begin()
-		if row is None:
-			d.stride.insert(name=name, stride=stride)
-		else:
-			d.stride.update({'rowid': row['rowid']}, {'stride': stride})
-		d.commit()
-
-		print("\t%s: %d" % (name, stride))
-
-	else:
-		print("Too many parameters to set stride")
-		sys.exit(-1)
-
-
 
 if __name__ == '__main__':
 	y = YDL()
