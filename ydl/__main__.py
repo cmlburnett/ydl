@@ -1032,7 +1032,7 @@ class YDL:
 		elif len(self.args.name) == 2:
 			ytid = self.args.name[0]
 
-			pref_name = db.title_to_name(self.args.name[1])
+			pref_name = ydl.db.title_to_name(self.args.name[1])
 			if pref_name != self.args.name[1]:
 				raise KeyError("Name '%s' is not valid" % self.args.name[1])
 
@@ -1098,7 +1098,7 @@ class YDL:
 
 			# FIXME: changing alias to a second alias doesn't fix v.dname, but does fix ch.alias and the directory name
 
-			pref = db.alias_coerce(self.args.alias[1])
+			pref = ydl.db.alias_coerce(self.args.alias[1])
 			if pref != self.args.alias[1]:
 				raise KeyError("Alias '%s' is not valid" % self.args.name[1])
 
@@ -2884,7 +2884,7 @@ def _download_video_TEMP(d, args, ytid, row, alias):
 	ret = json.load( open(fs[0], 'r') )
 
 	# Squash non-ASCII characters (I don't like emoji in file names)
-	name = db.title_to_name(ret['title'])
+	name = ydl.db.title_to_name(ret['title'])
 
 	# Format
 	ctime = row['ctime']
