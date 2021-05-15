@@ -128,10 +128,10 @@ def _rename_files(dname, ytid, newname, old_dname=None):
 		# Make new directory if it doesn't exist
 		# This happens if a single video was added and this is the first video of the uploader
 		if not os.path.exists(dname):
-			os.mkdir(dname)
+			os.makedirs(dname)
 
-		fs = glob.glob("%s/*%s*" % (old_dname, ytid))
-		fs2 = glob.glob("%s/.*%s*" % (old_dname, ytid))
+		fs = glob.glob("%s/%s/*%s*" % (old_dname, ytid[0], ytid))
+		fs2 = glob.glob("%s/%s/.*%s*" % (old_dname, ytid[0], ytid))
 		fs = fs + fs2
 
 		for f in fs:
@@ -143,7 +143,7 @@ def _rename_files(dname, ytid, newname, old_dname=None):
 
 	try:
 		# Step into sub directory
-		os.chdir(basedir + '/' + dname)
+		os.chdir(basedir + '/' + dname + '/' + ytid[0])
 
 		# Get all files with the YTID in it and all the dot files
 		fs = glob.glob('*%s*' % ytid)
@@ -327,7 +327,7 @@ class YDL:
 
 	def open_db(self):
 		"""Open the database object"""
-		self.db = db(os.getcwd() + '/' + self.args.file)
+		self.db = ydl.db(os.getcwd() + '/' + self.args.file)
 		self.db.open()
 
 		# Do any verification of the database here
@@ -678,7 +678,7 @@ class YDL:
 			print("\t\tNot found")
 			return
 
-		path = db.format_v_fname(row['dname'], row['name'], None, ytid, 'mkv')
+		path = ydl.db.format_v_fname(row['dname'], row['name'], None, ytid, 'mkv')
 		exists = os.path.exists(path)
 		size = None
 		if exists:
@@ -1209,7 +1209,7 @@ class YDL:
 				alias = aliases[ytid]
 
 			# All DB querying is done above, so just format it
-			path = db.format_v_fname(row['dname'], row['name'], alias, ytid, "mkv")
+			path = ydl.db.format_v_fname(row['dname'], row['name'], alias, ytid, "mkv")
 
 			# Check if it exists
 			exists = os.path.exists(path)
@@ -1391,7 +1391,7 @@ class YDL:
 			return None
 
 		# Squash non-ASCII characters (I don't like emoji in file names)
-		name = db.title_to_name(ret['title'])
+		name = ydl.db.title_to_name(ret['title'])
 
 		# Format
 		atime = _now()
@@ -1464,7 +1464,7 @@ class YDL:
 
 		dname = os.path.dirname(self.db.Filename) + '/MERGED'
 		if not os.path.exists(dname):
-			os.mkdir(dname)
+			os.makedirs(dname)
 
 		print("Checking that all provided playlists have been completely downloaded first")
 		print()
@@ -1846,7 +1846,7 @@ class YDL:
 
 		dname = os.path.dirname(self.db.Filename) + '/CHAPTERIZED'
 		if not os.path.exists(dname):
-			os.mkdir(dname)
+			os.makedirs(dname)
 
 		abort = False
 
@@ -1959,11 +1959,11 @@ class YDL:
 		# Path is %YTD%/SPLIT/YTID/
 		dname = os.path.dirname(self.db.Filename) + '/SPLIT'
 		if not os.path.exists(dname):
-			os.mkdir(dname)
+			os.makedirs(dname)
 
 		dname = os.path.dirname(self.db.Filename) + '/SPLIT/' + ytid + '/'
 		if not os.path.exists(dname):
-			os.mkdir(dname)
+			os.makedirs(dname)
 
 
 		# Get video data
@@ -2164,11 +2164,11 @@ class YDL:
 		# Path is %YTD%/CONVERT/YTID/
 		dname = os.path.dirname(self.db.Filename) + '/CONVERT'
 		if not os.path.exists(dname):
-			os.mkdir(dname)
+			os.makedirs(dname)
 
 		dname = os.path.dirname(self.db.Filename) + '/CONVERT/' + ytid + '/'
 		if not os.path.exists(dname):
-			os.mkdir(dname)
+			os.makedirs(dname)
 
 
 		# Get video data
@@ -2845,16 +2845,16 @@ def _download_video_TEMP(d, args, ytid, row, alias):
 
 	# Use name if there happens to be one that is present with atime being null
 	if row['name']:
-		dname,fname = db.format_v_names(row['dname'], row['name'], alias, row['ytid'])
+		dname,fname = ydl.db.format_v_names(row['dname'], row['name'], alias, row['ytid'])
 	else:
 		# If no name is present, use TEMP
-		dname,fname = db.format_v_names(row['dname'], 'TEMP', alias, row['ytid'])
+		dname,fname = ydl.db.format_v_names(row['dname'], 'TEMP', alias, row['ytid'])
 
 	print("\t\tDirectory: %s" % dname)
 
 	# Make subdir if it doesn't exist (this should have been done with --add)
 	if not os.path.exists(dname):
-		os.mkdir(dname)
+		os.makedirs(dname)
 
 	# Comes in as a list
 	rate = None
@@ -2932,7 +2932,7 @@ def _download_video_known(d, args, ytid, row, alias):
 		raise ValueError("Expected name to be set for ytid '%s'" % row['name'])
 
 	# Format name
-	dname,fname = db.format_v_names(row['dname'], row['name'], alias, row['ytid'])
+	dname,fname = ydl.db.format_v_names(row['dname'], row['name'], alias, row['ytid'])
 	# Have to escape the percent signs
 	fname = fname.replace('%', '%%')
 
@@ -2940,7 +2940,7 @@ def _download_video_known(d, args, ytid, row, alias):
 
 	# Make subdir if it doesn't exist
 	if not os.path.exists(dname):
-		os.mkdir(dname)
+		os.makedirs(dname)
 
 	# Comes in as a list
 	rate = None
@@ -3054,7 +3054,7 @@ def _download_captions(d, args, ytid, row, alias, lang):
 	print("\t\tLooking for subtitles")
 	try:
 		# Format name
-		path = db.format_v_fname(row['dname'], row['name'], alias, ytid, 'info.json')
+		path = ydl.db.format_v_fname(row['dname'], row['name'], alias, ytid, 'info.json')
 
 		if not os.path.exists(path):
 			print("\t\t\tinfo.json not found")
@@ -3093,7 +3093,7 @@ def _download_captions(d, args, ytid, row, alias, lang):
 	print("\t\tLooking for [automatic] captions")
 	try:
 		# Format name
-		path = db.format_v_fname(row['dname'], row['name'], alias, ytid, 'info.json')
+		path = ydl.db.format_v_fname(row['dname'], row['name'], alias, ytid, 'info.json')
 
 		if not os.path.exists(path):
 			print("\t\t\tinfo.json not found")
@@ -3138,7 +3138,7 @@ def _download_update_chapters(d, args, ytid, row, alias):
 			return
 
 		# Format name
-		path = db.format_v_fname(row['dname'], row['name'], alias, ytid, 'info.json')
+		path = ydl.db.format_v_fname(row['dname'], row['name'], alias, ytid, 'info.json')
 
 		with open(path, 'r') as f:
 			txt = f.read()
