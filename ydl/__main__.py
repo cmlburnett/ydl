@@ -2979,6 +2979,7 @@ def _download_actual(d, ytid, fname, dname, rate=None, autosleep=True):
 		else:
 			ydl.download(ytid, fname, dname, rate=rate)
 	except youtube_dl.utils.DownloadError as e:
+		traceback.print_exc()
 		txt = str(e)
 		if 'Video unavailable' in txt:
 			d.begin()

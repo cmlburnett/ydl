@@ -3,6 +3,7 @@ import youtube_dl
 
 # System libraries
 import contextlib
+import datetime
 import glob
 import io
 import json
@@ -746,4 +747,8 @@ class db(SH):
 			raise ValueError("No video found '%s'" % ytid)
 
 		return row['skip']
+
+def _now():
+	""" Now """
+	return datetime.datetime.utcnow()
 
