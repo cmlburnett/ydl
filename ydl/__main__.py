@@ -1221,10 +1221,18 @@ class YDL:
 			else:
 				t = row['title']
 				t = t.replace('\n', '\\n')
-				if exists:
-					print("\t\t%s: E %s (%s)" % (ytid, t, sec_str(row['duration'])))
+
+				if row['duration'] is None:
+					if exists:
+						print("\t\t%s: E %s" % (ytid, t))
+					else:
+						print("\t\t%s:   %s" % (ytid, t))
+
 				else:
-					print("\t\t%s:   %s (%s)" % (ytid, t, sec_str(row['duration'])))
+					if exists:
+						print("\t\t%s: E %s (%s)" % (ytid, t, sec_str(row['duration'])))
+					else:
+						print("\t\t%s:   %s (%s)" % (ytid, t, sec_str(row['duration'])))
 
 		print()
 		print("\t\tSkipped (S): %d of %d" % (skipped, len(ytids)))
