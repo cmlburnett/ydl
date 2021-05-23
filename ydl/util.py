@@ -294,6 +294,9 @@ def title_to_name(t):
 	There are several banned characters and will collapse whitespace, etc
 	"""
 
+	if t is None:
+		return None
+
 	t = t.replace('á','a')
 	t = t.replace('é','e')
 	t = t.replace('í','i')
