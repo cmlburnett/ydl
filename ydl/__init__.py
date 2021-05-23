@@ -324,7 +324,7 @@ def get_list(*vid, getVideoInfo=True):
 		for ytid in ytids:
 			subidx += 1
 
-			# Download vidoe information
+			# Download video information
 			if getVideoInfo:
 				# Download video information
 				k = get_videoinfo(ytid)
