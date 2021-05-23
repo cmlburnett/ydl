@@ -286,6 +286,7 @@ def get_list(*vid, getVideoInfo=True):
 		# indicating there was an error. I don't know if this is youtube-dl or youtube itself.
 		#
 		# Hack is to try a few times and wait for something to actually be returned.
+		titles = {}
 		ytids = []
 		for i in range(3):
 			# Have to capture the standard output
@@ -299,7 +300,14 @@ def get_list(*vid, getVideoInfo=True):
 			lines = lines.split('\n')
 			lines = [_ for _ in lines if len(_)] # Trim off empty newlines
 			lines = [json.loads(_) for _ in lines]
-			ytids = [_['id'] for _ in lines if 'id' in _] # Pull out just the youtube ids
+
+			# Get YTID and title
+			for line in lines:
+				ytid = line['id']
+
+				ytids.append(ytid)
+				if 'title' in line:
+					titles[ytid] = line['title']
 
 			# Get playlist information
 			# FIXME: doesn't seem to find the playlist entry
@@ -337,7 +345,10 @@ def get_list(*vid, getVideoInfo=True):
 
 			# Don't download video information, just do index and YT id
 			else:
-				subret.append( {'idx': subidx, 'ytid': ytid} )
+				if ytid in titles:
+					subret.append( {'idx': subidx, 'ytid': ytid, 'title': titles[ytid]} )
+				else:
+					subret.append( {'idx': subidx, 'ytid': ytid} )
 
 
 		# Accumulate list information
