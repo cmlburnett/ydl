@@ -2738,6 +2738,16 @@ def download_videos(d, args, filt, ignore_old):
 	# Filter
 	where = ""
 	if type(filt) is list and len(filt):
+		# Catch if playlist is provided but v.dname is the channel owner not the playlist (this will catch anything for dname and not just playlists, but should be fine regardless)
+		res = d.vids.select('ytid', '`name` in (%s)' % list_to_quoted_csv(filt))
+		other_rows = [_['ytid'] for _ in res]
+
+		# Found some, add to the filter list
+		# What playlist names were caught and returned rows in the above query will be ignored in the below query (that's the problem of the videos not getting pulled in)
+		# so laves those playlist ID's in there
+		if len(other_rows):
+			filt.extend(other_rows)
+
 		# Can provide both YTID's and channel/user names to filter by in the same list
 		# So search both ytid colum and dname (same as user name, channel name, etc)
 		where = "(`ytid` in ({0}) or `dname` in ({0})) and `skip`!=1".format(list_to_quoted_csv(filt))
@@ -2753,6 +2763,7 @@ def download_videos(d, args, filt, ignore_old):
 	# Get videos based on filter designed above
 	res = d.v.select(['rowid','ytid','title','name','dname','ctime','atime'], where)
 	rows = res.fetchall()
+
 
 	if (type(filt) is list and len(filt)) or ignore_old:
 		print("\tFiltered down to %d" % len(rows))
