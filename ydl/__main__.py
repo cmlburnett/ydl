@@ -2667,15 +2667,17 @@ def __sync_list_full(args, d, d_sub, f_get_list, summary, c_name, c_name_alt, ne
 
 			# Update or add video to the global videos list
 			for v in cur['info']:
-				vrow = d.v.select_one("rowid", "ytid=?", [v['ytid']])
-				if vrow:
-					d.v.update({'rowid': vrow['rowid']}, {'atime': None})
-				else:
+				title = v.get('title', None)
+				name = title_to_name(title)
+
+				# Attempt update then fall back to insert if that fails (eg, rowcount==0)
+				r = d.v.update({'ytid': v['ytid']}, {'atime': None, 'title': title, 'name': name})
+				if r.rowcount == 0:
 					n = _now()
 					# FIXME: dname is whatever list adds it first, but should favor
 					# the channel. Can happen if a playlist is added first, then the channel
 					# the video is on is added later.
-					d.v.insert(ytid=v['ytid'], ctime=n, atime=None, dname=(c_name_alt or c_name), skip=False)
+					r = d.v.insert(ytid=v['ytid'], ctime=n, atime=None, dname=(c_name_alt or c_name), title=title, name=name, skip=False)
 
 		# upload playlist info
 		summary['info'][c_name] = {
