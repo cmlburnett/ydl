@@ -2374,11 +2374,15 @@ class YDL:
 			print("\t%d of %d: %s" % (i+1, len(rows), row['ytid']))
 
 			# Find everything with that YTID (glob ignores dot files)
-			renamed = _rename_files(dname, ytid, name)
-			if renamed:
-				summary['change'].append(ytid)
-			else:
-				summary['same'].append(ytid)
+			try:
+				renamed = _rename_files(dname, ytid, name)
+				if renamed:
+					summary['change'].append(ytid)
+				else:
+					summary['same'].append(ytid)
+			except FileNotFoundError:
+				print("\t\tNot Exist")
+				continue
 
 		print("Same: %d" % len(summary['same']))
 		print("Changed: %d" % len(summary['change']))
