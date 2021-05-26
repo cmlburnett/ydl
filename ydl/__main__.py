@@ -897,6 +897,8 @@ class YDL:
 
 		elif len(self.args.sleep) == 1:
 			ytid = self.args.sleep[0]
+			if ytid[0] == '=':
+				ytid = '-' + ytid[1:]
 
 			now = datetime.datetime.utcnow()
 
@@ -915,6 +917,9 @@ class YDL:
 
 		elif len(self.args.sleep) == 2:
 			ytid = self.args.sleep[0]
+			if ytid[0] == '=':
+				ytid = '-' + ytid[1:]
+
 			t = self.args.sleep[1]
 
 			if '+' in t:
@@ -984,6 +989,9 @@ class YDL:
 		else:
 			self.db.begin()
 			for ytid in self.args.unsleep:
+				if ytid[0] == '=':
+					ytid = '-' + ytid[1:]
+
 				if ytid in pruned:
 					print("\t%s (auto-pruned above)" % ytid)
 				else:
@@ -3015,6 +3023,12 @@ def _download_actual(d, ytid, fname, dname, rate=None, autosleep=True):
 		elif 'access to members-only content' in txt:
 			d.begin()
 			print("\t\tVideo not available without paying, marking skip")
+			d.v.update({"ytid": ytid}, {"skip": True})
+			d.commit()
+			return None
+		elif 'Sign in to confirm your age' in txt:
+			d.begin()
+			print("\t\tVideo not available without signing in, marking skip")
 			d.v.update({"ytid": ytid}, {"skip": True})
 			d.commit()
 			return None
