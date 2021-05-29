@@ -93,7 +93,10 @@ from .util import print_2col
 from .util import title_to_name
 from .util import N_formatter
 
-from .fuse import ydl_fuse
+try:
+	from .fuse import ydl_fuse
+except:
+	ydl_fuse = None
 
 try:
 	import pushover
@@ -2771,7 +2774,6 @@ def download_videos(d, args, filt, ignore_old):
 	# Get videos based on filter designed above
 	res = d.v.select(['rowid','ytid','title','name','dname','ctime','atime'], where)
 	rows = res.fetchall()
-
 
 	if (type(filt) is list and len(filt)) or ignore_old:
 		print("\tFiltered down to %d" % len(rows))

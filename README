@@ -4,6 +4,11 @@ Wrapper for youtube-dl module
 
 that simplifies calling it to download from youtube.
 
+Requires my custom libraries:
+	mkvxmlmaker
+	crudexml
+	sqlitehelper
+
 ### As an executable library ###
 Execute the library as a script
 
