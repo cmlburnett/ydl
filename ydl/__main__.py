@@ -297,6 +297,7 @@ class YDL:
 		p.add_argument('--xml', action='store_true', default=False, help="Dump output as XML")
 		p.add_argument('--force', action='store_true', default=False, help="Force the action, whatever it may pertain to")
 		p.add_argument('--no-rss', action='store_true', default=False, help="Don't use RSS to check status of lists")
+		p.add_argument('--if-small', action='store_true', default=False, help="Pass to --download if the file size is smaller than the largest, and will trigger forced download if so")
 
 		p.add_argument('--sync', nargs='*', default=False, help="Sync all metadata and playlists (does not download video data)")
 		p.add_argument('--sync-list', nargs='*', default=False, help="Sync just the lists (not videos)")
@@ -2966,9 +2967,16 @@ def _download_video_known(d, args, ytid, row, alias):
 	if row['name'] is None:
 		raise ValueError("Expected name to be set for ytid '%s'" % row['name'])
 
-	# Format name
+	# Format names
+	dname,info_fname = ydl.db.format_v_names(row['dname'], row['name'], alias, row['ytid'], suffix='info.json')
+	info_fname = dname + '/' + info_fname
+
+	# File name supplied to youtube_dl is without suffix
 	dname,fname = ydl.db.format_v_names(row['dname'], row['name'], alias, row['ytid'])
-	# Have to escape the percent signs
+	# Full file name for checking file existence and size in case --if-small is given (Do this before escaping % signs)
+	fname_mkv = dname + '/' + fname + '.mkv'
+
+	# Have to escape the percent signs so youtube_dl doesn't assume it's a formatting variable
 	fname = fname.replace('%', '%%')
 
 	print("\t\tDirectory: %s" % dname)
@@ -2982,6 +2990,42 @@ def _download_video_known(d, args, ytid, row, alias):
 	if args.rate:
 		rate = args.rate[0]
 
+	# Skip if file present and is smaller than the maximum size found for that video
+	if args.if_small and os.path.exists(fname_mkv):
+		# Find max size
+		with open(info_fname) as f:
+			dat = f.read()
+			info = json.loads(dat)
+
+		bysize = {}
+		for x in info['formats']:
+			if x['filesize'] is not None:
+				bysize[ x['filesize'] ] = x
+
+		# Get largest sized format
+		max_sz = max(bysize.keys())
+		# Get actual file size
+		sz = os.path.getsize(fname_mkv)
+		# Get delta (negative if actual file size is larger than largest format)
+		delta = max_sz - sz
+		# Percentage of max file size
+		perc = sz / max_sz
+
+		# File is larger, so this is ok
+		if delta <= 0:
+			print("\t\tMax file size is %d bytes, have file with %d bytes and is larger so skipping" % (max_sz, sz))
+			return None
+		elif perc > 0.90:
+			print("\t\tMax file size is %d bytes, have file with %d bytes (%d bytes smaller), which is %.2f of original (>90) so skipping" % (max_sz, sz, delta, perc*100))
+			return None
+		else:
+			print("\t\tMax file size is %d bytes, have file with %d bytes (%d bytes smaller), which is %.2f of original (<90) so downloading" % (max_sz, sz, delta, perc*100))
+			print("\t\tRemoving file (%s) so download occurs" % (fname_mkv,))
+			try:
+				os.unlink(fname_mkv)
+			except:
+				# Ignore just in case this was ran, stopped before it was started to download, and re-ran
+				pass
 
 	# Finally do actual download
 	ret = _download_actual(d, row['ytid'], fname, dname, rate, not args.noautosleep)
@@ -3003,6 +3047,10 @@ def _download_video_known(d, args, ytid, row, alias):
 def _download_actual(d, ytid, fname, dname, rate=None, autosleep=True):
 	"""
 	Long chain of functions, but this actually downloads the video.
+	Returns:
+		None if not downloaded (eg, slept, skipped, other exception)
+		False if keyboard interrupt occured
+		True if successful
 	"""
 
 	# Download mkv file, description, info.json, thumbnails, etc
