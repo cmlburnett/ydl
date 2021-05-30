@@ -979,15 +979,9 @@ class YDL:
 
 		if len(self.args.unsleep) == 0:
 			print("")
-		elif len(self.args.unsleep) == 1 and self.args.unsleep == '*':
-			res = self.db.v_sleep.select(['rowid','ytid','t'])
-			rows = [dict(_) for _ in res]
-
+		elif len(self.args.unsleep) == 1 and self.args.unsleep[0] == '*':
 			self.db.begin()
-			for row in rows:
-				print("\t%s" % row['ytid'])
-				self.db.v_sleep.delete({'rowid': row['rowid']})
-
+			self.db.execute('delete from v_sleep')
 			self.db.commit()
 
 		else:
