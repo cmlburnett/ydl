@@ -2991,6 +2991,8 @@ def _download_video_known(d, args, ytid, row, alias):
 			dat = f.read()
 			info = json.loads(dat)
 
+		# Not all formats have filesize specified, of which may be the largest of formats so this necessitates
+		# picking 80% as this may be close enough if the maximum calculated here isn't the actual maximum
 		bysize = {}
 		for x in info['formats']:
 			if x['filesize'] is not None:
@@ -3009,11 +3011,11 @@ def _download_video_known(d, args, ytid, row, alias):
 		if delta <= 0:
 			print("\t\tMax file size is %d bytes, have file with %d bytes and is larger so skipping" % (max_sz, sz))
 			return None
-		elif perc > 0.90:
-			print("\t\tMax file size is %d bytes, have file with %d bytes (%d bytes smaller), which is %.2f of original (>90) so skipping" % (max_sz, sz, delta, perc*100))
+		elif perc > 0.80:
+			print("\t\tMax file size is %d bytes, have file with %d bytes (%d bytes smaller), which is %.2f of original (>80) so skipping" % (max_sz, sz, delta, perc*100))
 			return None
 		else:
-			print("\t\tMax file size is %d bytes, have file with %d bytes (%d bytes smaller), which is %.2f of original (<90) so downloading" % (max_sz, sz, delta, perc*100))
+			print("\t\tMax file size is %d bytes, have file with %d bytes (%d bytes smaller), which is %.2f of original (<80) so downloading" % (max_sz, sz, delta, perc*100))
 			print("\t\tRemoving file (%s) so download occurs" % (fname_mkv,))
 			try:
 				os.unlink(fname_mkv)
