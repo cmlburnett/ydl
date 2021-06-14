@@ -554,6 +554,9 @@ class db(SH):
 
 			# Chapter information, if used, otherwise null
 			DBCol('chapters', 'json'),
+
+			# Free text added to describe how to fix downloading this video, manually added
+			DBCol('fixcomments', 'text'),
 		),
 		# Manually set file names on some as standard ascii translation
 		# may make completely gibberish names
@@ -575,7 +578,8 @@ class db(SH):
 			DBCol('title', 'text'),
 			DBCol('uploader', 'text'),
 			DBCol('ctime', 'datetime'),
-			DBCol('atime', 'datetime')
+			DBCol('atime', 'datetime'),
+			DBCol('skip', 'bool')
 		),
 		# Named channels
 		DBTable('c',
