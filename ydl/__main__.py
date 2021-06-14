@@ -2407,6 +2407,7 @@ class YDL:
 			ret = download_videos(self.db, self.args, filt, ignore_old=self.args.ignore_old)
 
 		except Exception as e:
+			traceback.print_exc()
 			ret = sys.exc_info()
 
 		# Send notificaiton via Pushover
@@ -2891,9 +2892,14 @@ def _download_video_TEMP(d, args, ytid, row, alias):
 	if args.rate:
 		rate = args.rate[0]
 
+	# Sometimes, a special format is required to download correctly rather than the default
+	fmt = None
+	subrow = d.v.select_one('videoformat', '`ytid`=?', [ytid])
+	if subrow['videoformat'] is not None:
+		fmt = subrow['videoformat']
 
 	# Finally do actual download
-	ret = _download_actual(d, row['ytid'], fname, dname, rate, not args.noautosleep)
+	ret = _download_actual(d, row['ytid'], fname, dname, rate, not args.noautosleep, video_format=fmt)
 	if ret is None:
 		return None
 	elif ret == False:
@@ -3023,8 +3029,14 @@ def _download_video_known(d, args, ytid, row, alias):
 				# Ignore just in case this was ran, stopped before it was started to download, and re-ran
 				pass
 
+	# Sometimes, a special format is required to download correctly rather than the default
+	fmt = None
+	subrow = d.v.select_one('videoformat', '`ytid`=?', [ytid])
+	if subrow['videoformat'] is not None:
+		fmt = subrow['videoformat']
+
 	# Finally do actual download
-	ret = _download_actual(d, row['ytid'], fname, dname, rate, not args.noautosleep)
+	ret = _download_actual(d, row['ytid'], fname, dname, rate, not args.noautosleep, video_format=fmt)
 	if ret is None:
 		return None
 	elif ret == False:
@@ -3040,7 +3052,7 @@ def _download_video_known(d, args, ytid, row, alias):
 	}
 	return dat
 
-def _download_actual(d, ytid, fname, dname, rate=None, autosleep=True):
+def _download_actual(d, ytid, fname, dname, rate=None, autosleep=True, video_format=None):
 	"""
 	Long chain of functions, but this actually downloads the video.
 	Returns:
@@ -3054,9 +3066,16 @@ def _download_actual(d, ytid, fname, dname, rate=None, autosleep=True):
 		# Escape percent signs
 		fname = fname.replace('%', '%%')
 		if rate is None:
-			ydl.download(ytid, fname, dname)
+			if video_format is None:
+				ydl.download(ytid, fname, dname)
+			else:
+				ydl.download(ytid, fname, dname, video_format=video_format)
 		else:
-			ydl.download(ytid, fname, dname, rate=rate)
+			if video_format is None:
+				ydl.download(ytid, fname, dname, rate=rate)
+			else:
+				ydl.download(ytid, fname, dname, rate=rate, video_format=video_format)
+
 	except youtube_dl.utils.DownloadError as e:
 		traceback.print_exc()
 		txt = str(e)

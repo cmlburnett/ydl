@@ -36,7 +36,7 @@ def capture():
 		out[0] = out[0].getvalue()
 		out[1] = out[1].getvalue()
 
-def download(ytid, name, dname, write_all_thumbnails=True, add_metadata=True, writeinfojson=True, writedescription=True, writeannotations=True, skip_download=False, skip_if_exists=True, skip_if_fails=True, convert_mp3=False, rate=900000):
+def download(ytid, name, dname, write_all_thumbnails=True, add_metadata=True, writeinfojson=True, writedescription=True, writeannotations=True, skip_download=False, skip_if_exists=True, skip_if_fails=True, convert_mp3=False, rate=900000, video_format=None):
 
 	# Options to youtube-dl library to download the video
 	opts = {
@@ -50,7 +50,12 @@ def download(ytid, name, dname, write_all_thumbnails=True, add_metadata=True, wr
 		'outtmpl': name,
 		'ratelimit': rate,
 		'retries': 10,
+		'verbose': True,
 	}
+	# If format is manually specified
+	if video_format is not None:
+		opts['format'] = video_format
+
 	with youtube_dl.YoutubeDL(opts) as dl:
 		# Attempt download
 		cwd = os.getcwd()
