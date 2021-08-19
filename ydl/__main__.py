@@ -3048,7 +3048,8 @@ def _download_video_known(d, args, ytid, row, alias):
 		raise NotImplementedError("Unknown return value (%s) in downloading vide %s" % (ret,row['ytid']))
 
 	dat = {
-		'utime': _now()
+		'utime': _now(),
+		'atime': _now(),
 	}
 	return dat
 
