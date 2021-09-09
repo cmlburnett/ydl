@@ -292,6 +292,7 @@ class YDL:
 		p.add_argument('--unsleep', nargs='*', help="Remove the specified videos from the sleep list")
 		p.add_argument('--noautosleep', action='store_true', default=False, help="If video indicates it premiers in the future, it will automatically be added to the sleep list. Pass this to disable this. Default is to auto-sleep.")
 		p.add_argument('--info', nargs='*', default=False, help="Print out information about the video")
+		p.add_argument('--customformat', nargs='*', default=False, help="Set custom video format: supply YTID and format (eg '302+140')")
 
 		p.add_argument('--json', action='store_true', default=False, help="Dump output as JSON")
 		p.add_argument('--xml', action='store_true', default=False, help="Dump output as XML")
@@ -370,6 +371,9 @@ class YDL:
 
 		if self.args.update_names is not False:
 			self.updatenames()
+
+		if type(self.args.customformat) is list:
+			self.customformat()
 
 		if type(self.args.info) is list:
 			self.info()
@@ -720,6 +724,7 @@ class YDL:
 			['Path', path],
 			['Exists?', exists],
 			['Size', size],
+			['Custom Format', row['videoformat']],
 		]
 		if row['chapters'] is not None:
 			p = os.getcwd() + '/CHAPTERIZED/' + row['ytid'] + '.chapters.mkv'
@@ -739,6 +744,126 @@ class YDL:
 			]
 
 		print_2col(inf)
+
+
+		inf = []
+
+		path = ydl.db.format_v_fname(row['dname'], row['name'], None, ytid, 'info.json')
+		exists = os.path.exists(path)
+		if exists:
+			with open(path, 'r') as f:
+				dat = json.load(f)
+
+			fmt_default = dat['format_id']
+			fmt_parts = fmt_default.split('+')
+
+			customfmt_parts = []
+			if row['videoformat']:
+				customfmt_parts = row['videoformat'].split('+')
+
+			for fmt in dat['formats']:
+				if fmt['vcodec'] == 'none':
+					# Audio
+					if fmt['format_id'] in fmt_parts:
+						inf.append( ["Audio (%s)" % fmt['format_id'], "* %s" % fmt['format']] )
+					elif fmt['format_id'] in customfmt_parts:
+						inf.append( ["Audio (%s)" % fmt['format_id'], "C %s" % fmt['format']] )
+					else:
+						inf.append( ["Audio (%s)" % fmt['format_id'], "  %s" % fmt['format']] )
+
+				else:
+					# Video
+					if fmt['format_id'] in fmt_parts:
+						inf.append( ["Video (%s)" % fmt['format_id'], "* %s x %s (codec %s)" % (fmt['width'], fmt['height'], fmt['vcodec'])] )
+					elif fmt['format_id'] in customfmt_parts:
+						inf.append( ["Video (%s)" % fmt['format_id'], "C %s x %s (codec %s)" % (fmt['width'], fmt['height'], fmt['vcodec'])] )
+					else:
+						inf.append( ["Video (%s)" % fmt['format_id'], "  %s x %s (codec %s)" % (fmt['width'], fmt['height'], fmt['vcodec'])] )
+
+			print()
+			print("Formats (* is default, C is custom):")
+			print_2col(inf)
+
+	def customformat(self):
+		pruned = self._prunesleep()
+
+		if len(self.args.customformat) == 1:
+			ytid = self.args.customformat[0]
+
+			inf = []
+
+			row = self.db.v.select_one('*', '`ytid`=?', [ytid])
+			if row is None:
+				print("\t\tNot found")
+				return
+
+			if row['videoformat'] is None:
+				print("%s: no custom format has been specified" % ytid)
+
+			else:
+				print("%s: %s" % (ytid, row['videoformat']))
+
+			path = ydl.db.format_v_fname(row['dname'], row['name'], None, ytid, 'info.json')
+			exists = os.path.exists(path)
+			if exists:
+				with open(path, 'r') as f:
+					dat = json.load(f)
+
+				fmt_default = dat['format_id']
+				fmt_parts = fmt_default.split('+',1)
+
+				customfmt_parts = []
+				if row['videoformat']:
+					customfmt_parts = row['videoformat'].split('+')
+
+				for fmt in dat['formats']:
+					if fmt['vcodec'] == 'none':
+						# Audio
+						if fmt['format_id'] in fmt_parts:
+							inf.append( ["Audio (%s)" % fmt['format_id'], "* %s" % fmt['format']] )
+						elif fmt['format_id'] in customfmt_parts:
+							inf.append( ["Audio (%s)" % fmt['format_id'], "C %s" % fmt['format']] )
+						else:
+							inf.append( ["Audio (%s)" % fmt['format_id'], "  %s" % fmt['format']] )
+
+					else:
+						# Video
+						if fmt['format_id'] in fmt_parts:
+							inf.append( ["Video (%s)" % fmt['format_id'], "* %s x %s (codec %s)" % (fmt['width'], fmt['height'], fmt['vcodec'])] )
+						elif fmt['format_id'] in customfmt_parts:
+							inf.append( ["Video (%s)" % fmt['format_id'], "C %s x %s (codec %s)" % (fmt['width'], fmt['height'], fmt['vcodec'])] )
+						else:
+							inf.append( ["Video (%s)" % fmt['format_id'], "  %s x %s (codec %s)" % (fmt['width'], fmt['height'], fmt['vcodec'])] )
+
+				print()
+				print("Formats (* is default, C is custom):")
+				print_2col(inf)
+
+		elif len(self.args.customformat) == 2:
+			ytid = self.args.customformat[0]
+
+			row = self.db.v.select_one('*', '`ytid`=?', [ytid])
+			if row is None:
+				print("\t\tNot found")
+				return
+
+			self.db.begin()
+			if len(self.args.customformat[1]):
+				print("%s: set format to %s" % (ytid, self.args.customformat[1]))
+				self.db.v.update({'ytid': ytid}, {'videoformat': self.args.customformat[1]})
+			else:
+				print("%s: deleting custom format")
+				self.db.v.update({'ytid': ytid}, {'videoformat': None})
+			self.db.commit()
+
+		else:
+			print("Usage:")
+			print("  --customformat YTID      Show current custom format (if set) and the available formats")
+			print("  --customformat YTID FMT  Set the custom format (eg, '302+140') for the video")
+			print()
+			print("Once a custom format is set, you must --download it again.")
+			print("If the video has already been downloaded, you will have to manually delete the .mkv file")
+			print(" as youtube-dl will see the final file is present and skip it")
 
 	def _show_skip(self):
 		res = self.db.v.select(["ytid","dname","name"], "`skip`=?", [True])
