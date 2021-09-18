@@ -304,6 +304,7 @@ class YDL:
 		p.add_argument('--sync-list', nargs='*', default=False, help="Sync just the lists (not videos)")
 		p.add_argument('--sync-videos', nargs='*', default=False, help="Sync just the videos (not lists)")
 		p.add_argument('--ignore-old', action='store_true', default=False, help="Ignore old list items and old videos")
+		p.add_argument('--skip-until', nargs=1, default=False, help="Skip until the given the given YT id is found")
 		p.add_argument('--download', nargs='*', default=False, help="Download video")
 		p.add_argument('--update-names', nargs='*', default=False, help="Check and update file names to match v.name values (needed if title changed on YouTube after download)")
 
@@ -1486,8 +1487,23 @@ class YDL:
 		}
 
 		try:
+			skipuntilmet = False
+
 			# Iterate over videos
 			for i,row in enumerate(rows):
+				if args.skip_until is not False:
+					if i == 0:
+						print("Skipping until: %s" % args.skip_until[0])
+
+					if skipuntilmet:
+						pass
+					else:
+						if row['ytid'] in args.skip_until:
+							skipuntilmet = True
+
+						else:
+							continue
+
 				# print to the screen to show progress
 				print("\t%d of %d: %s" % (i+1,len(rows), row['ytid']))
 				self.sync_video(row, summary)
@@ -2916,9 +2932,25 @@ def download_videos(d, args, filt, ignore_old):
 	ytids = list(rows.keys())
 	ytids = sorted(ytids)
 
+	# Used if --skip-until YTID is passed
+	skipuntilmet = False
+
 	# Fetch each video
 	for i,ytid in enumerate(ytids):
 		row = rows[ytid]
+
+		if args.skip_until is not False:
+			if i == 0:
+				print("Skipping until: %s" % args.skip_until[0])
+
+			if skipuntilmet:
+				pass
+			else:
+				if ytid in args.skip_until:
+					skipuntilmet = True
+
+				else:
+					continue
 
 		print("\t%d of %d: %s" % (i+1, len(rows), ytid))
 
