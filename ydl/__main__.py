@@ -74,6 +74,7 @@ import stat
 import subprocess
 import sys
 import tempfile
+import time
 import traceback
 import urllib
 
@@ -3230,16 +3231,42 @@ def _download_actual(d, ytid, fname, dname, rate=None, autosleep=True, video_for
 	try:
 		# Escape percent signs
 		fname = fname.replace('%', '%%')
-		if rate is None:
-			if video_format is None:
-				ydl.download(ytid, fname, dname)
-			else:
-				ydl.download(ytid, fname, dname, video_format=video_format)
-		else:
-			if video_format is None:
-				ydl.download(ytid, fname, dname, rate=rate)
-			else:
-				ydl.download(ytid, fname, dname, rate=rate, video_format=video_format)
+		while True:
+			retry_count = 0
+
+			try:
+				if rate is None:
+					if video_format is None:
+						ydl.download(ytid, fname, dname)
+					else:
+						ydl.download(ytid, fname, dname, video_format=video_format)
+				else:
+					if video_format is None:
+						ydl.download(ytid, fname, dname, rate=rate)
+					else:
+						ydl.download(ytid, fname, dname, rate=rate, video_format=video_format)
+
+				# Successful so break
+				break
+
+			# This is to all
+			except youtube_dl.utils.DownloadError as e:
+				txt = str(e)
+				if 'Network is unreachable' in txt:
+					if retry_count >= 10:
+						print("Failed 10 retries, aborting")
+						raise
+					else:
+						# Try again after some sleep
+						traceback.print_exc()
+						retry_count += 1
+
+						print()
+						print("Network unreachable, sleeping for %d seconds; retry %d of 10" % (2 ** retry_count, retry_count))
+						time.sleep(2 ** retry_count)
+						continue
+				else:
+					raise
 
 	except youtube_dl.utils.DownloadError as e:
 		traceback.print_exc()
