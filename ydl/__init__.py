@@ -36,7 +36,7 @@ def capture():
 		out[0] = out[0].getvalue()
 		out[1] = out[1].getvalue()
 
-def download(ytid, name, dname, write_all_thumbnails=True, add_metadata=True, writeinfojson=True, writedescription=True, writeannotations=True, skip_download=False, skip_if_exists=True, skip_if_fails=True, convert_mp3=False, rate=900000, video_format=None):
+def download(ytid, name, dname, write_all_thumbnails=True, add_metadata=True, writeinfojson=True, writedescription=True, writeannotations=True, skip_download=False, skip_if_exists=True, skip_if_fails=True, convert_mp3=False, rate=900000, video_format=None, downloader=None):
 
 	# Options to youtube-dl library to download the video
 	opts = {
@@ -52,6 +52,19 @@ def download(ytid, name, dname, write_all_thumbnails=True, add_metadata=True, wr
 		'retries': 10,
 		'verbose': True,
 	}
+
+	if downloader is None:
+		pass
+	elif downloader == 'aria2c':
+		opts['external_downloader'] = 'aria2c'
+		opts['external_downloader_args'] = ['--min-split-size=1M', '--max-connection-per-server=16', '--max-concurrent-downloads=16', '--split=16']
+
+	elif downloader == 'axel':
+		opts['external_downloader'] = 'axel'
+		opts['external_downloader_args'] = ['-n', '15', '-a', '-k']
+	else:
+		raise Exception("Unrecognized downloader '%s', cannot proceed" % downloader)
+
 	# If format is manually specified
 	if video_format is not None:
 		opts['format'] = video_format

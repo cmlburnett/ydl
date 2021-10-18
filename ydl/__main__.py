@@ -3237,14 +3237,14 @@ def _download_actual(d, ytid, fname, dname, rate=None, autosleep=True, video_for
 			try:
 				if rate is None:
 					if video_format is None:
-						ydl.download(ytid, fname, dname)
+						ydl.download(ytid, fname, dname, downloader='aria2c')
 					else:
-						ydl.download(ytid, fname, dname, video_format=video_format)
+						ydl.download(ytid, fname, dname, video_format=video_format, downloader='aria2c')
 				else:
 					if video_format is None:
-						ydl.download(ytid, fname, dname, rate=rate)
+						ydl.download(ytid, fname, dname, rate=rate, downloader='aria2c')
 					else:
-						ydl.download(ytid, fname, dname, rate=rate, video_format=video_format)
+						ydl.download(ytid, fname, dname, rate=rate, video_format=video_format, downloader='aria2c')
 
 				# Successful so break
 				break
@@ -3253,6 +3253,23 @@ def _download_actual(d, ytid, fname, dname, rate=None, autosleep=True, video_for
 			except youtube_dl.utils.DownloadError as e:
 				txt = str(e)
 				if 'Network is unreachable' in txt:
+					if retry_count >= 10:
+						print("Failed 10 retries, aborting")
+						raise
+					else:
+						# Try again after some sleep
+						traceback.print_exc()
+						retry_count += 1
+
+						print()
+						print("Network unreachable, sleeping for %d seconds; retry %d of 10" % (2 ** retry_count, retry_count))
+						time.sleep(2 ** retry_count)
+						continue
+				else:
+					raise
+			except urllib.error.URLError as e:
+				txt = str(e)
+				if 'Temporary failure in name resolution' in txt:
 					if retry_count >= 10:
 						print("Failed 10 retries, aborting")
 						raise
