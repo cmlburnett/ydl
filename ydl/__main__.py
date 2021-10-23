@@ -163,6 +163,18 @@ def _rename_files(dname, ytid, newname, old_dname=None):
 			# or "FOO - YTID.caption.en.vtt"
 			parts = f.split(ytid)
 
+			# Flags to avoid hidden files
+			dotfile = f.startswith('.')
+			dotunderfile = f.startswith('._')
+
+			# For now, just ignore them
+			if dotfile:
+				print("\t\t%s: SKIPPING DOT FILE" % f)
+				continue
+			if dotunderfile:
+				print("\t\t%s: SKIPPING DOT-UNDERSCORE FILE" % f)
+				continue
+
 			# Sometimes this happens that the file downloaded is an MP4 or something
 			# and youtube-dl doesn't put a suffix on it (seems to be older videos). Annoying.
 			# And it doesn't merge into an mkv as requested. Annoying x2.
@@ -3122,8 +3134,9 @@ def _download_video_TEMP(d, args, ytid, row, alias):
 			print(e)
 
 	# Rename TEMP files
-	if not row['name']:
-		_rename_files(dname_real, ytid, name)
+	#if not row['name']:
+	# NOTE: trying this every time to see if that fixes when videos are renamed between --sync-list and --download
+	_rename_files(dname_real, ytid, name)
 
 	return dat
 
@@ -3453,6 +3466,9 @@ def _download_update_chapters(d, args, ytid, row, alias):
 
 		# Format name
 		path = ydl.db.format_v_fname(row['dname'], row['name'], alias, ytid, 'info.json')
+
+		# FIXME: sometimes the file name is different from --sync-list and --download
+		# in which case the following open will fail
 
 		with open(path, 'r') as f:
 			txt = f.read()
