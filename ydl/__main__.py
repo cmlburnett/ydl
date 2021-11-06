@@ -320,7 +320,7 @@ class YDL:
 		p.add_argument('--skip-until', nargs=1, default=False, help="Skip until the given the given YT id is found")
 		p.add_argument('--download', nargs='*', default=False, help="Download video")
 		p.add_argument('--update-names', nargs='*', default=False, help="Check and update file names to match v.name values (needed if title changed on YouTube after download)")
-		p.add_argument('--downloader', nargs='?', default='builtin', choices=['builtin','alex','aria2c'], help="Downloader for youtube-dl to use, must install separately if using something other than builtin")
+		p.add_argument('--downloader', nargs='?', default='aria2c', choices=['builtin','alex','aria2c'], help="Downloader for youtube-dl to use, must install separately if using something other than builtin")
 
 		p.add_argument('--fuse', nargs=1, help="Initiate FUSE file system fronted by the specified database, provide path to mount to")
 		p.add_argument('--fuse-absolute', action='store_true', default=False, help="Sym links are relative by default, pass this to make them absolute paths")
