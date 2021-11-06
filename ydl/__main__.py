@@ -320,6 +320,7 @@ class YDL:
 		p.add_argument('--skip-until', nargs=1, default=False, help="Skip until the given the given YT id is found")
 		p.add_argument('--download', nargs='*', default=False, help="Download video")
 		p.add_argument('--update-names', nargs='*', default=False, help="Check and update file names to match v.name values (needed if title changed on YouTube after download)")
+		p.add_argument('--downloader', nargs='?', default='builtin', choices=['builtin','alex','aria2c'], help="Downloader for youtube-dl to use, must install separately if using something other than builtin")
 
 		p.add_argument('--fuse', nargs=1, help="Initiate FUSE file system fronted by the specified database, provide path to mount to")
 		p.add_argument('--fuse-absolute', action='store_true', default=False, help="Sym links are relative by default, pass this to make them absolute paths")
@@ -3076,7 +3077,7 @@ def _download_video_TEMP(d, args, ytid, row, alias):
 		fmt = subrow['videoformat']
 
 	# Finally do actual download
-	ret = _download_actual(d, row['ytid'], fname, dname, rate, not args.noautosleep, video_format=fmt)
+	ret = _download_actual(d, row['ytid'], fname, dname, rate, not args.noautosleep, video_format=fmt, downloader=args.downloader)
 	if ret is None:
 		return None
 	elif ret == False:
@@ -3214,7 +3215,7 @@ def _download_video_known(d, args, ytid, row, alias):
 		fmt = subrow['videoformat']
 
 	# Finally do actual download
-	ret = _download_actual(d, row['ytid'], fname, dname, rate, not args.noautosleep, video_format=fmt)
+	ret = _download_actual(d, row['ytid'], fname, dname, rate, not args.noautosleep, video_format=fmt, downloader=args.downloader)
 	if ret is None:
 		return None
 	elif ret == False:
@@ -3231,7 +3232,7 @@ def _download_video_known(d, args, ytid, row, alias):
 	}
 	return dat
 
-def _download_actual(d, ytid, fname, dname, rate=None, autosleep=True, video_format=None):
+def _download_actual(d, ytid, fname, dname, rate=None, autosleep=True, video_format=None, downloader=None):
 	"""
 	Long chain of functions, but this actually downloads the video.
 	Returns:
@@ -3247,17 +3248,26 @@ def _download_actual(d, ytid, fname, dname, rate=None, autosleep=True, video_for
 		while True:
 			retry_count = 0
 
+			if downloader is None:
+				pass
+			elif downloader == 'builtin':
+				downloader = None
+			elif downloader in ('alex', 'aria2c'):
+				pass
+			else:
+				raise Exception("Supplied downloader '%s' but it is unrecognized downloader type")
+
 			try:
 				if rate is None:
 					if video_format is None:
-						ydl.download(ytid, fname, dname, downloader='aria2c')
+						ydl.download(ytid, fname, dname, downloader=downloader)
 					else:
-						ydl.download(ytid, fname, dname, video_format=video_format, downloader='aria2c')
+						ydl.download(ytid, fname, dname, video_format=video_format, downloader=downloader)
 				else:
 					if video_format is None:
-						ydl.download(ytid, fname, dname, rate=rate, downloader='aria2c')
+						ydl.download(ytid, fname, dname, rate=rate, downloader=downloader)
 					else:
-						ydl.download(ytid, fname, dname, rate=rate, video_format=video_format, downloader='aria2c')
+						ydl.download(ytid, fname, dname, rate=rate, video_format=video_format, downloader=downloader)
 
 				# Successful so break
 				break
