@@ -1505,14 +1505,14 @@ class YDL:
 
 			# Iterate over videos
 			for i,row in enumerate(rows):
-				if args.skip_until is not False:
+				if self.args.skip_until is not False:
 					if i == 0:
-						print("Skipping until: %s" % args.skip_until[0])
+						print("Skipping until: %s" % self.args.skip_until[0])
 
 					if skipuntilmet:
 						pass
 					else:
-						if row['ytid'] in args.skip_until:
+						if row['ytid'] in self.args.skip_until:
 							skipuntilmet = True
 
 						else:
