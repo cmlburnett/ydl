@@ -93,6 +93,7 @@ from .util import inputopts
 from .util import print_2col
 from .util import title_to_name
 from .util import N_formatter
+from .util import loop_to_seconds
 
 try:
 	from .fuse import ydl_fuse
@@ -292,6 +293,7 @@ class YDL:
 		p.add_argument('--stdin', action='store_true', default=False, help="Accept input on STDIN for parameters instead of arguments")
 		p.add_argument('--debug', choices=('debug','info','warning','error','critical'), default='error', help="Set logging level")
 		p.add_argument('--rate', nargs=1, default=[900000], type=int, help="Download rate in bps")
+		p.add_argument('--loop', nargs=1, default=False, metavar="LOOP", help="Repeat invocation every LOOP value (if integer then assumed seconds, otherwise X.Xz for z is d/h/m/s for days/hours/minutes/seconds), if absent then executes once. Only meaningful for certain actions.")
 
 		p.add_argument('--add', nargs='*', default=False, help="Add URL(s) to download")
 		p.add_argument('--name', nargs='*', default=False, help="Supply a YTID and file name to manually specify it")
@@ -399,14 +401,39 @@ class YDL:
 		if type(self.args.list) is list or type(self.args.listall) is list:
 			self.list()
 
-		if self.args.sync is not False or self.args.sync_list is not False:
-			self.sync_list()
+		if type(self.args.loop) is list:
+			loop = loop_to_seconds(self.args.loop[0])
+			print("Looping enabled at %s" % loop)
+		else:
+			loop = None
 
-		if self.args.sync is not False or self.args.sync_videos is not False:
-			self.sync_videos()
+		loopcnt = 0
+		while True:
+			start = datetime.datetime.utcnow()
+			if self.args.sync is not False or self.args.sync_list is not False:
+				self.sync_list()
 
-		if self.args.download is not False:
-			self.download()
+			if self.args.sync is not False or self.args.sync_videos is not False:
+				self.sync_videos()
+
+			if self.args.download is not False:
+				self.download()
+
+			end = datetime.datetime.utcnow()
+			loopcnt += 1
+
+			if loop is None:
+				# No looping, break out of the loop here to finish the other options
+				break
+			else:
+				# Loop again for forever, which means the last options won't ever be processed
+				print('-'*80)
+				print("--------- Loop %d complete, took %s ----------" % (loopcnt, end - start))
+				print("--------- Sleeping for %s ----------" % loop)
+
+				# Convert to seconds then sleep
+				secs = loop.total_seconds()
+				time.sleep(secs)
 
 		if self.args.merge_playlist is not False:
 			self.merge_playlist()

@@ -1,4 +1,5 @@
 # System
+import datetime
 import hashlib
 import html.parser
 import re
@@ -355,6 +356,40 @@ def title_to_name(t):
 
 	return t
 
+def loop_to_seconds(v):
+	"""
+	Converts "X.Xd" to days, "X.Xh" to hours, "X.Xm" to minutes, and "X.Xs" to seconds and return as a datetime.timedelta object.
+	This can be converted to seconds with total_seconds() function on the object to pass to time.sleep().
+	"""
+
+	if v is False:
+		return None
+
+	if not isinstance(v, str):
+		raise TypeError("Unexpected type '%s' for loop value '%s'" % (type(v), v))
+
+	# Get rid of any white space just in case
+	v = v.strip()
+	# Get rid of the trailing character (d, h, m, s) then strip again just in case "3 d" is passed instead of "3d"
+
+	if v.endswith('d'):
+		v = v.strip('d').strip()
+		return datetime.timedelta(days=float(v))
+
+	elif v.endswith('h'):
+		v = v.strip('h').strip()
+		return datetime.timedelta(hours=float(v))
+
+	elif v.endswith('m'):
+		v = v.strip('m').strip()
+		return datetime.timedelta(minutes=float(v))
+
+	elif v.endswith('s'):
+		v = v.strip('s').strip()
+		return datetime.timedelta(seconds=float(v))
+
+	else:
+		raise ValueError("Uninterpretable loop value '%s'" % v)
 
 class N_formatter(string.Formatter):
 	"""
