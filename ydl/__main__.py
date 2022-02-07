@@ -342,6 +342,7 @@ class YDL:
 		p.add_argument('--genre', default=False, help="Set genre, if splitting to audio file")
 		p.add_argument('--format-name', default=False, help="Format the name string (eg, '{N} {name}, if splitting to audio file")
 		p.add_argument('--caption-language', default="en", help="Specify the caption language to download. Comma-delimited if multiple. Empty string if all.")
+		p.add_argument('--cookies', default=None, help="Pass in a cookies file to youtube-dl")
 
 		#TODO: pull caption-language default from environmental variables (LANG, LANGUAGE)
 
@@ -3104,7 +3105,7 @@ def _download_video_TEMP(d, args, ytid, row, alias):
 		fmt = subrow['videoformat']
 
 	# Finally do actual download
-	ret = _download_actual(d, row['ytid'], fname, dname, rate, not args.noautosleep, video_format=fmt, downloader=args.downloader)
+	ret = _download_actual(d, row['ytid'], fname, dname, rate, not args.noautosleep, video_format=fmt, downloader=args.downloader, cookies=args.cookies)
 	if ret is None:
 		return None
 	elif ret == False:
@@ -3242,7 +3243,7 @@ def _download_video_known(d, args, ytid, row, alias):
 		fmt = subrow['videoformat']
 
 	# Finally do actual download
-	ret = _download_actual(d, row['ytid'], fname, dname, rate, not args.noautosleep, video_format=fmt, downloader=args.downloader)
+	ret = _download_actual(d, row['ytid'], fname, dname, rate, not args.noautosleep, video_format=fmt, downloader=args.downloader, cookies=args.cookies)
 	if ret is None:
 		return None
 	elif ret == False:
@@ -3259,7 +3260,7 @@ def _download_video_known(d, args, ytid, row, alias):
 	}
 	return dat
 
-def _download_actual(d, ytid, fname, dname, rate=None, autosleep=True, video_format=None, downloader=None):
+def _download_actual(d, ytid, fname, dname, rate=None, autosleep=True, video_format=None, downloader=None, cookies=None):
 	"""
 	Long chain of functions, but this actually downloads the video.
 	Returns:
@@ -3287,14 +3288,14 @@ def _download_actual(d, ytid, fname, dname, rate=None, autosleep=True, video_for
 			try:
 				if rate is None:
 					if video_format is None:
-						ydl.download(ytid, fname, dname, downloader=downloader)
+						ydl.download(ytid, fname, dname, downloader=downloader, cookies=cookies)
 					else:
-						ydl.download(ytid, fname, dname, video_format=video_format, downloader=downloader)
+						ydl.download(ytid, fname, dname, video_format=video_format, downloader=downloader, cookies=cookies)
 				else:
 					if video_format is None:
-						ydl.download(ytid, fname, dname, rate=rate, downloader=downloader)
+						ydl.download(ytid, fname, dname, rate=rate, downloader=downloader, cookies=cookies)
 					else:
-						ydl.download(ytid, fname, dname, rate=rate, video_format=video_format, downloader=downloader)
+						ydl.download(ytid, fname, dname, rate=rate, video_format=video_format, downloader=downloader, cookies=cookies)
 
 				# Successful so break
 				break
