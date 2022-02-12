@@ -647,6 +647,9 @@ class db(SH):
 			DBCol('t', 'datetime'), # UTC time to consider it "skipped", once passed, this row should be deleted and can be treated as a normal video
 		),
 
+		DBTable("hook",
+			DBCol('name', 'text'),
+		),
 	]
 	def open(self, rowfactory=None):
 		ex = os.path.exists(self.Filename)
@@ -658,6 +661,15 @@ class db(SH):
 
 	def reopen(self):
 		super().reopen()
+
+	def get_hook(self):
+		return self.hook.select('name')
+
+	def add_hook(self, name):
+		return self.hook.insert(name=name)
+
+	def remove_hook(self, name):
+		self.hook.delete({'name': name})
 
 	def get_video(self, ytid):
 		return self.v.select_one("*", "`ytid`=?", [ytid])
@@ -787,4 +799,26 @@ class db(SH):
 def _now():
 	""" Now """
 	return datetime.datetime.utcnow()
+
+def hook(*hooks):
+	"""
+	Decorator to add hook functions in a module
+
+		@ydl.hook('download')
+		def foo(name, **kwargs):
+			...
+
+	This will mark the function foo as a hook that should be
+	executed on hook 'download' and accepts arguments as @kwargs
+	"""
+
+	# @hooks is a list of hooks the decorated function accepts
+	# so add it to an attribute list _hooks on that function
+	# and then when ydl.__main__.run_hooks looks for functions
+	# to execute as hooks it will be based on finding this
+	# attribute on the function
+	def _(f):
+		f._hooks = hooks
+		return f
+	return _
 

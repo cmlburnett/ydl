@@ -67,6 +67,7 @@ Common actions:
 import argparse
 import datetime
 import glob
+import importlib
 import json
 import logging
 import os
@@ -341,10 +342,14 @@ class YDL:
 		p.add_argument('--year', default=False, help="Set year, if splitting to audio file")
 		p.add_argument('--genre', default=False, help="Set genre, if splitting to audio file")
 		p.add_argument('--format-name', default=False, help="Format the name string (eg, '{N} {name}, if splitting to audio file")
+		#TODO: pull caption-language default from environmental variables (LANG, LANGUAGE)
 		p.add_argument('--caption-language', default="en", help="Specify the caption language to download. Comma-delimited if multiple. Empty string if all.")
 		p.add_argument('--cookies', default=None, help="Pass in a cookies file to youtube-dl")
 
-		#TODO: pull caption-language default from environmental variables (LANG, LANGUAGE)
+		p.add_argument('--hook', nargs='*', default=None, help="List all hook modules if no arguments, otherwise add a hook module")
+		p.add_argument('--unhook', nargs='*', default=None, help="Remove the specified module from the hook list")
+		# TODO: take arguments that can specify hook modules to ignore, or module.fname to ignore specific hook functions
+		p.add_argument('--nohook', default=False, action='store_true', help='Suspends calling hooks')
 
 		return p.parse_args()
 
@@ -365,6 +370,12 @@ class YDL:
 		if self.args.fuse:
 			self.fuse()
 			sys.exit()
+
+		if type(self.args.hook) is list:
+			self.hook()
+
+		if type(self.args.unhook) is list:
+			self.unhook()
 
 		if type(self.args.add) is list:
 			self.add()
@@ -447,6 +458,64 @@ class YDL:
 
 		if self.args.split is not False:
 			self.split()
+
+	def hook(self):
+		self.db.begin()
+
+		ret = self.db.get_hook()
+		existing = [dict(_)['name'] for _ in ret]
+
+		# Add hook modules
+		if len(self.args.hook):
+			for h in self.args.hook:
+				h = h.strip()
+				if h in existing:
+					print("Hook module '%s' already in hook list" % h)
+				else:
+					self.db.add_hook(h)
+					self.db.commit()
+					print("Added: %s" % h)
+
+		# List all hooks
+		else:
+			if len(existing):
+				print("Existing hooks:")
+				existing = sorted(existing)
+
+				for h in existing:
+					print("\t%s" % h)
+
+			else:
+				print("No existing hooks")
+
+	def unhook(self):
+		self.db.begin()
+
+		ret = self.db.get_hook()
+		existing = [dict(_)['name'] for _ in ret]
+
+		# Remove hooks
+		if len(self.args.unhook):
+			for h in self.args.unhook:
+				h = h.strip()
+				if h in existing:
+					self.db.remove_hook(h)
+					self.db.commit()
+					print("Removed: %s" % h)
+				else:
+					print("Hook module '%s' not listed, cannot remove it" % h)
+
+		# List all hooks
+		else:
+			if len(existing):
+				print("Existing hooks:")
+				existing = sorted(existing)
+
+				for h in existing:
+					print("\t%s" % h)
+
+			else:
+				print("No existing hooks")
 
 	def add(self):
 		# Processing list of URLs
@@ -2122,6 +2191,10 @@ class YDL:
 			print(" ".join(args))
 			subprocess.run(args)
 
+			# Hook: "chapterize"
+			if not self.args.nohook:
+				run_hook(self.db, 'chapterize', ytid=ytid)
+
 	def split(self):
 		pruned = self._prunesleep()
 
@@ -2326,6 +2399,10 @@ class YDL:
 				self._tag_file(fmt, parms, fname)
 
 			num += 1
+
+		# Hook: "split"
+		if not self.args.nohook:
+			run_hook(self.db, 'split', ytid=ytid)
 
 	def convert(self):
 		pruned = self._prunesleep()
@@ -3074,6 +3151,10 @@ def _download_video(d, args, ytid, row):
 	_download_captions(d, args, ytid, row, alias, lang)
 	_download_update_chapters(d, args, ytid, row, alias)
 
+	# Hook: "download"
+	if not args.nohook:
+		run_hook(d, 'download', ytid=ytid)
+
 def _download_video_TEMP(d, args, ytid, row, alias):
 	"""Download to TEMP-YTID first, then renamed based on info.json file that gets downloaded"""
 
@@ -3537,6 +3618,42 @@ def _download_update_chapters(d, args, ytid, row, alias):
 	except:
 		traceback.print_exc()
 		return
+
+def run_hook(db, hook_name, **kwargs):
+	"""
+	This is invoked any time a hook point is reached.
+	The hook name @hook_name and any appropriate arguments as keywords in @kwargs.
+	The @db is the ydl.db file.
+
+	Currently recognized hook names (as implemented above) and their keywords provided
+		download		ytid
+		split			ytid
+		chapterize		ytid
+
+	Hooks are executed without a try-except block and generally shouldn't end execution
+	unless it calls sys.exit().
+	"""
+
+	# Get all hooks in the DB
+	hooks = db.get_hook()
+	hooks = [dict(_)['name'] for _ in hooks]
+
+	# Iteratue through the hooks
+	for hook in hooks:
+		# Try importing the hook module and finding any functions that have used the ydl.hook decorate
+		# which means it has a _hooks attribute indicating which hooks it accepts
+		try:
+			z = importlib.import_module(hook)
+			for x in dir(z):
+				o = getattr(z, x)
+				if hasattr(o, '_hooks') and hook_name in o._hooks:
+					o(hook_name, db, **kwargs)
+				del o
+			del z
+		except Exception as e:
+			traceback.print_exc()
+			# Move along
+
 
 if __name__ == '__main__':
 	y = YDL()
