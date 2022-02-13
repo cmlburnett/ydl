@@ -14,14 +14,14 @@ Execute the library as a script
 
 	python -m ydl --help
 
-Using ydl in this manner creates a sqlite database in the current directory to store videos.
+Using ydl in this manner creates a sqlite database in the current directory to store videos (ydl.db).
 
 	python -m ydl --add https://www.youtube.com/user/NASAtelevision
 	python -m ydl --sync-list NASAtelevision
 	python -m ydl --download NASAtelevision
 
 This will add NASA to the list of channels, sync the list to check for new videos, and download videos.
-When downloading videos, files are saved with the video title used a sthe file name that is heavily modified to be filesystem friendly.
+When downloading videos, files are saved with the video title used as the file name that is heavily modified to be filesystem friendly.
 You can use --ignore-old to skip downloading old videos (videos already downloaded) when called later.
 
 	python -m ydl --ignore-old --download NASAtelevision
@@ -30,9 +30,13 @@ To list all of the channels and playlists being tracked:
 
 	python -m ydl --list
 
-and to list all the channels and playlists and their videos:
+and to list all the channels and playlists and their videos (this could be very long):
 
 	python -m ydl --listall
+
+or just all in a single channel
+
+	python -m ydl --listall NASAtelevision
 
 To get more information on the database
 
@@ -56,7 +60,7 @@ If there's a video to skip because it's private, requires payment, you don't car
 
 and --unskip to take it off the skip list.
 
-If there's a video that is not yet released, sleeping is a way to temporarily skip the video
+If there's a video that is not yet released, sleeping is a way to temporarily skip the video (this will skip for 10 days)
 
 	python -m ydl --sleep _fRSaLAEW2s d+10
 
@@ -75,9 +79,10 @@ Other functions:
 	--no-rss				Skip checking RSS for a --sync-list action
 	--notify				Uses Pushover to send notifications to your phone, etc (configure with ~/.pushoverrc) when things finish
 	--noautosleep			If a video is found to be not released yet, a sleep timer is automatically set. This turns that off.
+	--cookies				Pass in a cookies file to youtube-dl
 
 	--merge-playlist		Merge an entire playlist into a single video using each playlist item as a chapter in the final video
-	--chapter-edit			Edit chapter information for a video
+	--chapter-edit			Edit chapter information for a video (this works regardless if source video had chapters)
 	--chapterize			Take the chapter information, and add it to the video (creates a new copy with chapter info)
 	--split					Dice up a file based on chapter information (mkv, mp3, or ogg)
 	--convert				Convert file to mp3 or ogg
@@ -86,6 +91,10 @@ Other functions:
 	--album					Add album information if making mp3 or ogg
 	--year					Add year information if making mp3 or ogg
 	--genre					Add genre information if making mp3 or ogg
+
+	--hook					List hooks or add python library as hooks if provided
+	--unhook				Remove a python library as a hook
+	--nochook				Suspend use of hooks for this invocation
 
 
 ### As a regular library ###
@@ -152,6 +161,8 @@ the **kwargs to catch the args in a dict and then test the values.
 			...
 		elif kwargs['kind'] == 'c':
 			...
+
+If, for whatever reason, you want to not invoke hooks then use --nohook.
 
 Overall, hooks are intended to allow post-event actions to be taken.
 This could mean sneding a notification, pushing a downloaded file elsewhere,
