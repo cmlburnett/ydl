@@ -598,6 +598,10 @@ class YDL:
 					self.db.add_video(u[1], "MISCELLANEOUS")
 					print("\tAdded")
 
+					# Hook: "add"
+					if not self.args.nohook:
+						run_hook(self.db, 'add', kind='v', ytid=u[1])
+
 			elif u[0] == 'u':
 				o = self.db.get_user(u[1])
 				if o:
@@ -608,6 +612,10 @@ class YDL:
 					if not os.path.exists(u[1]):
 						os.mkdir(u[1])
 					print("\tAdded")
+
+					# Hook: "add"
+					if not self.args.nohook:
+						run_hook(self.db, 'add', kind='u', id=u[1])
 
 			elif u[0] == 'p':
 				o = self.db.get_playlist(u[1])
@@ -620,6 +628,10 @@ class YDL:
 						os.mkdir(u[1])
 					print("\tAdded")
 
+					# Hook: "add"
+					if not self.args.nohook:
+						run_hook(self.db, 'add', kind='p', plid=u[1])
+
 			elif u[0] == 'c':
 				o = self.db.get_channel_named(u[1])
 				if o:
@@ -629,6 +641,10 @@ class YDL:
 					self.db.add_channel_named(u[1])
 					os.mkdir(u[1])
 					print("\tAdded")
+
+					# Hook: "add"
+					if not self.args.nohook:
+						run_hook(self.db, 'add', kind='c', id=u[1])
 
 			elif u[0] == 'ch':
 				o = self.db.get_channel_unnamed(u[1])
@@ -640,6 +656,10 @@ class YDL:
 					if not os.path.exists(u[1]):
 						os.mkdir(u[1])
 					print("\tAdded")
+
+					# Hook: "add"
+					if not self.args.nohook:
+						run_hook(self.db, 'add', kind='ch', id=u[1])
 
 			else:
 				raise ValueError("Unrecognize URL type %s" % (u,))
@@ -1048,11 +1068,20 @@ class YDL:
 				# Delete any sleep times for this video, this will not error if no rows present
 				self.db.v_sleep.delete({'ytid': ytid})
 
+				# Hook: "skip-video"
+				if not self.args.nohook:
+					run_hook(self.db, 'skip-video', ytid=ytid)
+
 			print("Marking playlists to skip (%d):" % len(pl_ytids))
 			for ytid in pl_ytids:
 				print("\t%s" % ytid)
 				row = self.db.pl.select_one("rowid", "`ytid`=?", [ytid])
 				self.db.pl.update({"rowid": row['rowid']}, {"skip": True})
+
+				# Hook: "skip-playlist"
+				if not self.args.nohook:
+					run_hook(self.db, 'skip-playlist', plid=ytid)
+
 			self.db.commit()
 
 	def unskip(self):
@@ -1083,11 +1112,20 @@ class YDL:
 				row = self.db.v.select_one("rowid", "`ytid`=?", [ytid])
 				self.db.v.update({"rowid": row['rowid']}, {"skip": False})
 
+				# Hook: "unskip-video"
+				if not self.args.nohook:
+					run_hook(self.db, 'unskip-video', ytid=ytid)
+
 			print("Marking playlists to not skip (%d):" % len(pl_ytids))
 			for ytid in pl_ytids:
 				print("\t%s" % ytids)
 				row = self.db.pl.select_one("rowid", "`ytid`=?", [ytid])
 				self.db.pl.update({"rowid": row['rowid']}, {"skip": False})
+
+				# Hook: "unskip-playlist"
+				if not self.args.nohook:
+					run_hook(self.db, 'unskip-playlist', plid=ytid)
+
 			self.db.commit()
 
 
@@ -1117,6 +1155,11 @@ class YDL:
 			for row in prune:
 				print("\t%s -- %s" % (row['ytid'], row['t'].strftime(fmt)))
 				self.db.v_sleep.delete({'rowid': row['rowid']})
+
+				# Hook: "unsleep"
+				if not self.args.nohook:
+					run_hook(self.db, 'unsleep', ytid=ytid, autoprune=True)
+
 			self.db.commit()
 
 			print("")
@@ -1212,6 +1255,10 @@ class YDL:
 				self.db.v_sleep.insert(ytid=ytid, t=t)
 				self.db.commit()
 
+			# Hook: "sleep"
+			if not self.args.nohook:
+				run_hook(self.db, 'sleep', ytid=ytid, t=t)
+
 	def unsleep(self):
 		"""
 		Remove videos from sleep list.
@@ -1239,6 +1286,10 @@ class YDL:
 				else:
 					print("\t%s" % ytid)
 					self.db.v_sleep.delete({'ytid': ytid})
+
+					# Hook: "unsleep"
+					if not self.args.nohook:
+						run_hook(self.db, 'unsleep', ytid=ytid, autoprune=False)
 
 			self.db.commit()
 
@@ -1301,6 +1352,10 @@ class YDL:
 			else:
 				self.db.vnames.insert(ytid=ytid, name=pref_name)
 			self.db.commit()
+
+			# Hook: "name"
+			if not self.args.nohook:
+				run_hook(self.db, 'name', ytid=ytid, name=pref_name)
 
 		else:
 			print("Too many arguments")
@@ -1391,6 +1446,10 @@ class YDL:
 			self.db.v.update({'dname': self.args.alias[0]}, {'dname': pref})
 			self.db.vids.update({'name': old_name}, {'name': pref})
 			self.db.commit()
+
+			# Hook: "alias"
+			if not self.args.nohook:
+				run_hook(self.db, 'alias', oldname=old_name, newname=pref)
 
 		else:
 			print("Too many variables")
@@ -2513,6 +2572,10 @@ class YDL:
 
 		self._tag_file(fmt, parms, dname + fname_out)
 
+		# Hook: "convert"
+		if not self.args.nohook:
+			run_hook(self.db, 'convert', ytid=ytid, meta=parms, src_fname=fname, dest_fname=fname_out)
+
 	@classmethod
 	def _make_convert_args(cls, fmt, fname, fname_out, start=None, duration=None):
 		"""
@@ -3626,12 +3689,28 @@ def run_hook(db, hook_name, **kwargs):
 	The @db is the ydl.db file.
 
 	Currently recognized hook names (as implemented above) and their keywords provided
-		download		ytid
-		split			ytid
+		add				kind='ch'	id
+		add				kind='c'	id
+		add				kind='p'	plid
+		add				kind='u'	id
+		add				kind='v'	ytid
+		alias			oldname		newname
 		chapterize		ytid
+		download		ytid
+		name			ytid		name
+		sleep			ytid		t
+		unsleep			ytid		autoprune
+		split			ytid
+		skip-playlist	plid
+		skip-video		ytid
+		unskip-playlist	plid
+		unskip-video	ytid
 
-	Hooks are executed without a try-except block and generally shouldn't end execution
-	unless it calls sys.exit().
+	Hooks are executed within a try-except block and generally shouldn't end execution
+	unless it calls sys.exit(). Be warned that there is no way to change ydl's execution
+	with hooks (ie, it can't return a code to abort the action). As run_hook() can be
+	called from within a transaction, calling sys.exit() can abort the transaction and
+	lead to data loss.
 	"""
 
 	# Get all hooks in the DB

@@ -120,3 +120,41 @@ Example:
 	import ydl
 	ydl.download([('dQw4w9WgXcQ', 'Rick Astley', 'Never Gonna Give You Up')], convert_mp3=True)
 
+### Extension ###
+Limited facilities exist to extend the functionality through execution hooks.
+These currently serve more as notifications of events rather than means to alter ydl's execution.
+
+To use a hook, write a new python library and install it like usual.
+In your library, use the ydl.hook decorator on functions you want to hook.
+
+For example, this function will be called whenever a download is completed:
+
+	from ydl import hook
+
+	@hook('download')
+	def mydownload(db, hook_name, **kwargs):
+		ret = db.v.select('*', "`ytid`='%s'"%ytid)
+		ret = dict(ret.fetchone())
+
+		print("Downloaded video '%s' from channel '%s'" % (ytid, ret['dname']))
+
+A function can accept multiple hooks
+
+	@hook('skip-video', 'skip-playlist', 'unskip-video', 'unskip-playlist')
+
+which is why the hook name is provided as an argument.
+If accepting multiple hooks, or a hook with variable arguments (eg, add) then use
+the **kwargs to catch the args in a dict and then test the values.
+
+	@hook('add')
+	def myadd(db, hook_name, **kwargs):
+		if kwargs['kind'] == ch:
+			...
+		elif kwargs['kind'] == 'c':
+			...
+
+Overall, hooks are intended to allow post-event actions to be taken.
+This could mean sneding a notification, pushing a downloaded file elsewhere,
+processing a downloaded file into another system, etc. No limits, really.
+Keep in mind these are ran inline so long executions will delay the main ydl functionality.
+
