@@ -102,6 +102,11 @@ except:
 	ydl_fuse = None
 
 try:
+	import tracklists
+except:
+	tracklists = None
+
+try:
 	import pushover
 except:
 	pushover = None
@@ -1158,7 +1163,7 @@ class YDL:
 
 				# Hook: "unsleep"
 				if not self.args.nohook:
-					run_hook(self.db, 'unsleep', ytid=ytid, autoprune=True)
+					run_hook(self.db, 'unsleep', ytid=row['ytid'], autoprune=True)
 
 			self.db.commit()
 
@@ -1967,7 +1972,7 @@ class YDL:
 			print("%s - %s" % (ytid, dat[ytid]['title']))
 
 			while True:
-				z = inputopts("\tChapters: (p)rint, (e)dit, (d)escription dump, add (o)ffset, (C)continue, (q)uit? ")
+				z = inputopts("\tChapters: (p)rint, (e)dit, (t)racklist import, (d)escription dump, add (o)ffset, (C)continue, (q)uit? ")
 				if z == 'p':
 					if dat[ytid]['chapters'] is None:
 						print("\tNo chapter data")
@@ -1981,7 +1986,30 @@ class YDL:
 						for i,chap in enumerate(chaps):
 							print("\t\t%d) %*s -- %s" % (i+1,maxlen, chap[0], chap[1]))
 
-				elif z == 'e':
+				elif z == 'e' or z == 't':
+					append_tracklist = None
+
+					# Gather track info if requested
+					if z == 't':
+						if tracklists is None:
+							print("Please install 1001-tracklists: https://github.com/leandertolksdorf/1001-tracklists-api")
+							continue
+
+						# Download a tracklist from somewhere
+						url = input("Enter a URL to scrape a tracklist: ")
+						url = url.strip()
+						if not len(url):
+							continue
+
+						else:
+							v = tracklists.Tracklist(url)
+							d = zip(v.cues, v.tracks)
+							append_tracklist = []
+							for c,t in d:
+								append_tracklist.append("%s\t%s" % (c,t.full_title))
+							append_tracklist = '\n'.join(append_tracklist)
+
+
 					p = self.db.get_v_fname(ytid, suffix='info.json')
 
 					chaps = ""
@@ -2029,6 +2057,10 @@ class YDL:
 						except Exception as e:
 							traceback.print_exc()
 							print("Caught exception, will load blank screen")
+
+						# If tracklists were gathered, add them at the end
+						if append_tracklist is not None:
+							f.write(append_tracklist)
 
 						f.seek(0)
 
@@ -2169,6 +2201,7 @@ class YDL:
 							break
 						else:
 							raise ValueError("Unrecognized input: %s" % z)
+
 				else:
 					raise ValueError("Unrecognized input: %s" % z)
 				print()
