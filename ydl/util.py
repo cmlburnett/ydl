@@ -2,6 +2,7 @@
 import datetime
 import hashlib
 import html.parser
+import http
 import re
 import string
 import xml.etree.ElementTree as ET
@@ -147,7 +148,26 @@ class RSSHelper:
 		Parse RSS feed at a YouTube url @url and return the available videos from that feed.
 		"""
 
-		r = requests.get(url)
+		cnt = 0
+		while True:
+			if cnt >= 10:
+				print("Tried 10 times, aborting")
+				return False
+
+			try:
+				r = requests.get(url)
+			except requests.exceptions.ConnectionError:
+				cnt += 1
+				print("Caught remote disconnect exception, sleeping %d sec and trying again" % (cnt*5))
+				time.sleep(cnt*5)
+				continue
+			except http.client.RemoteDisconnected:
+				cnt += 1
+				print("Caught remote disconnect exception, sleeping %d sec and trying again" % (cnt*5))
+				time.sleep(cnt*5)
+				continue
+			break
+
 		if r.status_code != 200:
 			return False
 
