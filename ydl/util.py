@@ -5,6 +5,7 @@ import html.parser
 import http
 import re
 import string
+import time
 import xml.etree.ElementTree as ET
 
 # Installed
