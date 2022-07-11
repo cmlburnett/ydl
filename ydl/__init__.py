@@ -23,6 +23,12 @@ from .util import title_to_name, list_to_quoted_csv
 class EmptyListError(Exception): pass
 class PaymentRequiredException(Exception): pass
 
+def ignore_livevideos(x):
+	if 'is_live' in x and x['is_live']:
+		return "Ignoring live videos"
+
+	return None
+
 # From https://stackoverflow.com/questions/5136611/capture-stdout-from-a-script
 @contextlib.contextmanager
 def capture():
@@ -40,6 +46,7 @@ def download(ytid, name, dname, write_all_thumbnails=True, add_metadata=True, wr
 
 	# Options to youtube-dl library to download the video
 	opts = {
+		'match_filter': ignore_livevideos,
 		'merge_output_format': 'mkv',
 		'write_all_thumbnails': write_all_thumbnails,
 		'add_metadata': add_metadata,
@@ -137,6 +144,7 @@ def download_group(*vid, write_all_thumbnails=True, add_metadata=True, writeinfo
 
 			# Options to youtube-dl library to download the video
 			opts = {
+				'match_filter': ignore_livevideos,
 				'merge_output_format': 'mkv',
 				'write_all_thumbnails': write_all_thumbnails,
 				'add_metadata': add_metadata,
