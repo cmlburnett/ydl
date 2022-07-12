@@ -446,7 +446,8 @@ class YDL:
 				# Loop again for forever, which means the last options won't ever be processed
 				print('-'*80)
 				print("--------- Loop %d complete, took %s ----------" % (loopcnt, end - start))
-				print("--------- Sleeping for %s ----------" % loop)
+				print("--------- Current UTC time is     %s ---------" % end.strftime("%Y-%m-%d %H:%M:%S"))
+				print("--------- Sleeping for %s to %s ----------" % (loop, (end + loop).strftime("%Y-%m-%d %H:%M:%S")))
 
 				# Convert to seconds then sleep
 				secs = loop.total_seconds()
@@ -3571,8 +3572,11 @@ def _download_actual(d, ytid, fname, dname, rate=None, autosleep=True, video_for
 				print("Unrecognized time (%s), arbitrarily picking one day" % txt)
 				t += datetime.timedelta(days=1)
 
+			# Arbitrarily add 2 hours
+			t += datetime.timedelta(hours=2)
+
 			d.begin()
-			print("\t\tAuto-sleeping video until: %s" % t.strftime("%Y-%m-%d %H:%M:%S"))
+			print("\t\tAuto-sleeping video until: %s (currently %s)" % (t.strftime("%Y-%m-%d %H:%M:%S"), datetime.datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")))
 			d.v_sleep.insert(ytid=ytid, t=t)
 			d.commit()
 			return None
