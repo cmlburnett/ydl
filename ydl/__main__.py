@@ -3534,6 +3534,8 @@ def _download_actual(d, ytid, fname, dname, rate=None, autosleep=True, video_for
 			d.v.update({"ytid": ytid}, {"skip": True})
 			d.commit()
 			return None
+		elif 'live video' in txt:
+			print("\t\tVide is live, sleeping for a bit if autosleep enabled")
 
 		if autosleep:
 			if 'begin in a few moments' in txt:
@@ -3545,6 +3547,9 @@ def _download_actual(d, ytid, fname, dname, rate=None, autosleep=True, video_for
 			elif 'Premieres in ' in txt:
 				print("\t\tVideo not available yet (%s)" % txt)
 				parts = txt.split('Premieres in ')
+			elif 'live video' in txt:
+				print("\t\tAutosleeping live video for 2 hours")
+				parts = txt.split('live video for ')
 			else:
 				print("Unrecognized time (%s), arbitrarily pcking one day" % txt)
 				parts = ['', '1 day']

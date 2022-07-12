@@ -25,7 +25,7 @@ class PaymentRequiredException(Exception): pass
 
 def ignore_livevideos(x):
 	if 'is_live' in x and x['is_live']:
-		return "Ignoring live videos"
+		raise youtube_dl.utils.DownloadError("Ignoring live video for 2 hours")
 
 	return None
 
