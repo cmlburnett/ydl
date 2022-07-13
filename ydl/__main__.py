@@ -427,6 +427,9 @@ class YDL:
 		loopcnt = 0
 		while True:
 			start = datetime.datetime.utcnow()
+			if loop is not None:
+				print("--------- Current UTC time is     %s ---------" % start.strftime("%Y-%m-%d %H:%M:%S"))
+
 			if self.args.sync is not False or self.args.sync_list is not False:
 				self.sync_list()
 
