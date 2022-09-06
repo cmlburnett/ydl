@@ -123,7 +123,16 @@ class RSSHelper:
 		Get RSS from page url @url.
 		"""
 
-		r = requests.get(url)
+		cnt = 0
+		while cnt < 10:
+			try:
+				r = requests.get(url)
+				break
+			except requests.exceptions.ConnectionError:
+				cnt += 1
+				print("Error")
+				time.sleep(5*cnt)
+
 		if r.status_code != 200:
 			return False
 
