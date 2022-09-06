@@ -658,6 +658,11 @@ class db(SH):
 		DBTable("hook",
 			DBCol('name', 'text'),
 		),
+
+		# Saves paths when using --copy
+		DBTable("copy_paths",
+			DBCol('path', 'text'),
+		),
 	]
 	def open(self, rowfactory=None):
 		ex = os.path.exists(self.Filename)

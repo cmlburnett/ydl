@@ -71,6 +71,7 @@ import importlib
 import json
 import logging
 import os
+import readline
 import stat
 import subprocess
 import sys
@@ -356,6 +357,8 @@ class YDL:
 		# TODO: take arguments that can specify hook modules to ignore, or module.fname to ignore specific hook functions
 		p.add_argument('--nohook', default=False, action='store_true', help='Suspends calling hooks')
 
+		p.add_argument('--copy', default=None, nargs='+', help='Copy file elsewhere. List at least one YTID to copy.')
+
 		return p.parse_args()
 
 	def open_db(self):
@@ -467,6 +470,9 @@ class YDL:
 
 		if self.args.split is not False:
 			self.split()
+
+		if type(self.args.copy) is list:
+			self.copy_file()
 
 	def hook(self):
 		self.db.begin()
@@ -2804,6 +2810,180 @@ class YDL:
 
 			pushover.Client().send_message(msg, title="ydl")
 			print('notify: %s' % msg)
+
+	def copy_file(self):
+		pruned = self._prunesleep()
+
+		print("Copy %d files" % len(self.args.copy))
+		for ytid in self.args.copy:
+			self.copy_file_ytid(ytid)
+
+	def copy_file_ytid(self, ytid):
+		print("\t%s" % ytid)
+		row = self.db.get_video(ytid)
+		if row is None:
+			print("\t\tYnrecognized YTID, aborting")
+			return
+
+		print("\t\tChannel: %s" % row['dname'])
+		print("\t\tTitle: %s" % row['title'])
+
+		src_path = self.db.get_v_fname(ytid)
+		print("\t\tSource: %s" % src_path)
+
+		if not os.path.exists(src_path):
+			print("\t\tSource file does not exist, cannot copy")
+			return
+
+		# Check if there's a chapterized file, or a split directory of mp3's
+		p = os.getcwd() + '/CHAPTERIZED/' + row['ytid'] + '.chapters.mkv'
+		s = os.getcwd() + '/SPLIT/' + row['ytid'] + '/'
+
+		exists_p = os.path.exists(p)
+		exists_s = os.path.exists(s)
+
+		if exists_p:
+			print("\t\tChapterized path: %s" % p)
+		if exists_s:
+			print("\t\tSplit path: %s" % s)
+		print()
+
+		copy_what = 'original'
+		if exists_p or exists_s:
+			while True:
+				print("\t\tWhat to copy?")
+				print("\t\t O) Original")
+				if exists_p:
+					print("\t\t C) Chapterized")
+				if exists_s:
+					print("\t\t S) Split")
+				r = input()
+				if r.strip().lower() == 'o':
+					copy_what = 'original'
+					break
+				elif r.strip().lower() == 'c':
+					copy_what = 'chapterized'
+					break
+				elif r.strip().lower() == 's':
+					copy_what = 'split'
+					break
+				else:
+					print("Unrecognized input, try again")
+
+		else:
+			# Copy original
+			copy_what = 'original'
+
+		if copy_what == 'original':
+			# Copy original file
+			dest = None
+
+			res = self.db.copy_paths.select('*', order='path asc')
+			paths = [_['path'] for _ in res]
+			paths = sorted(paths)
+			if len(paths):
+				cnt = 1
+				print()
+				print("\t\tPick a previously used path:")
+				paths_idx = {}
+				for path in paths:
+					paths_idx[cnt] = path
+					print("\t\t\t%d) %s" % (cnt, path))
+					cnt += 1
+				while True:
+					ret = input("\t\tPick a path by number or just hit enter to skip: ")
+					ret = ret.strip()
+					if not len(ret):
+						break
+					elif ret.isdigit():
+						ret = int(ret)
+						if ret not in paths_idx:
+							print("\t\tUnrecognized path '%s', try again" % ret)
+							continue
+						else:
+							dest = paths_idx[ret]
+							break
+
+			while True:
+				if dest is not None:
+					readline.set_startup_hook(lambda: readline.insert_text(dest))
+
+				print()
+				dest = input("\t\tDestination path (no file name): ")
+				dest = dest.strip()
+
+				# Ensure path exists
+				if not os.path.exists(dest):
+					readline.set_startup_hook(lambda: readline.insert_text(None))
+
+					ret = input("\t\tPath does not exist, (c)reate, (e)dit, (a)bort")
+					ret = ret.strip().lower()
+					if ret == 'c':
+						raise NotImplementedError
+					elif ret == 'e':
+						# Loop back and try again
+						continue
+					elif ret == 'a':
+						# Abort this function to end this YTID copying
+						return
+					else:
+						print("\t\tUnrecognized input, try again")
+
+				else:
+					break
+
+			if dest not in paths:
+				print('saved')
+				self.db.begin()
+				self.db.copy_paths.insert(path=dest)
+				self.db.commit()
+
+			src_fname = os.path.split(src_path)[-1]
+			dest_fname = src_fname
+
+			while True:
+				readline.set_startup_hook(lambda: readline.insert_text(dest_fname))
+				dest_fname = input("\t\tDestination file name: ")
+				dest_fname = dest_fname.strip()
+				if not len(dest_fname):
+					print("\t\tEmpty file name, cannot use null file name. Try again.")
+					dest_fname = src_fname
+					continue
+
+				break
+
+			dest_path = os.path.join(dest, dest_fname)
+			if os.path.exists(dest_path):
+				while True:
+					readline.set_startup_hook(lambda: readline.insert_text())
+					ret = input("\t\tDestination file exists, overwrite? (y)es, (a)bort ")
+					ret = ret.strip().lower()
+					if ret == 'y':
+						break
+					elif ret == 'a':
+						return
+					else:
+						continue
+
+			print("\t\tcp '%s' '%s'" % (src_path, dest_path))
+			args = ['cp', src_path, dest_path]
+			subprocess.run(args)
+
+			# Check if @dest is a directory or path
+			#   If path, check that it exists, prompt if to replace
+			#   If dir, check that dirs exists, prompt if not
+			#     then copy filename from source and check if exists, prompt if to replace
+			#   If dir then save path for future use
+			# Copy file
+
+		elif copy_what == 'chapterized':
+			raise NotImplementedError
+
+		elif copy_what == 'split':
+			raise NotImplementedError
+
+		else:
+			raise NotImplementedError
 
 def _sync_list(args, d, d_sub, filt, col_name, ignore_old, rss_ok, ydl_func):
 	"""
