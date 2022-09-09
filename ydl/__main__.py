@@ -2863,6 +2863,7 @@ class YDL:
 					break
 				elif r.strip().lower() == 'c':
 					copy_what = 'chapterized'
+					src_path = p
 					break
 				elif r.strip().lower() == 's':
 					copy_what = 'split'
@@ -2874,7 +2875,7 @@ class YDL:
 			# Copy original
 			copy_what = 'original'
 
-		if copy_what == 'original':
+		if copy_what in ('original','chapterized'):
 			# Copy original file
 			dest = None
 
@@ -2975,9 +2976,6 @@ class YDL:
 			#     then copy filename from source and check if exists, prompt if to replace
 			#   If dir then save path for future use
 			# Copy file
-
-		elif copy_what == 'chapterized':
-			raise NotImplementedError
 
 		elif copy_what == 'split':
 			raise NotImplementedError
