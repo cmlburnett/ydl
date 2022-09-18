@@ -2848,37 +2848,33 @@ class YDL:
 			print("\t\tSplit path: %s" % s)
 		print()
 
-		copy_what = 'original'
-		if exists_p or exists_s:
-			while True:
-				print("\t\tWhat to copy?")
-				print("\t\t O) Original")
-				if exists_p:
-					print("\t\t C) Chapterized")
-				if exists_s:
-					print("\t\t S) Split")
-				r = input()
-				if r.strip().lower() == 'o':
-					copy_what = 'original'
-					break
-				elif r.strip().lower() == 'c':
-					copy_what = 'chapterized'
-					src_path = p
-					break
-				elif r.strip().lower() == 's':
-					copy_what = 'split'
-					break
-				else:
-					print("Unrecognized input, try again")
-
+		# Check which to copy, if no chapterized or split then assume the original
+		if exists_p and exists_s:
+			ret = inputopts("What to copy? (O)riginal, (C)hapterized, (S)plit")
+		elif exists_p:
+			ret = inputopts("What to copy? (O)riginal, (C)hapterized")
+		elif exists_s:
+			ret = inputopts("What to copy? (O)riginal, (S)plit")
 		else:
-			# Copy original
-			copy_what = 'original'
+			print("\t\tCopying original, no chapterized or split found")
+			ret = 'o'
 
+		# Translate return value into something more meaningful to read
+		if ret == 'o':
+			copy_what = 'original'
+		elif ret == 'c':
+			copy_what = 'chapterized'
+		elif ret == 's':
+			copy_what = 'split'
+		else:
+			raise Exception("Unexpected input: '%s'" % copy_what)
+
+		# Copy a single file over
 		if copy_what in ('original','chapterized'):
 			# Copy original file
 			dest = None
 
+			# Display the paths used previously to speed up picking a path
 			res = self.db.copy_paths.select('*', order='path asc')
 			paths = [_['path'] for _ in res]
 			paths = sorted(paths)
@@ -2905,6 +2901,8 @@ class YDL:
 							dest = paths_idx[ret]
 							break
 
+			# Get a destination path, start with @dest which can be a path picked
+			# from above
 			while True:
 				if dest is not None:
 					readline.set_startup_hook(lambda: readline.insert_text(dest))
@@ -2933,15 +2931,18 @@ class YDL:
 				else:
 					break
 
+			# If the path hasn't been seen before, then save it
 			if dest not in paths:
 				print('saved')
 				self.db.begin()
 				self.db.copy_paths.insert(path=dest)
 				self.db.commit()
 
+			# Split off the file name to @src_fname and assume destination file name will be the same
 			src_fname = os.path.split(src_path)[-1]
 			dest_fname = src_fname
 
+			# Get destination file name
 			while True:
 				readline.set_startup_hook(lambda: readline.insert_text(dest_fname))
 				dest_fname = input("\t\tDestination file name: ")
@@ -2953,6 +2954,7 @@ class YDL:
 
 				break
 
+			# Make absolute path for the destination and ask to replace if it already exists
 			dest_path = os.path.join(dest, dest_fname)
 			if os.path.exists(dest_path):
 				while True:
@@ -2966,16 +2968,10 @@ class YDL:
 					else:
 						continue
 
+			# Copy file
 			print("\t\tcp '%s' '%s'" % (src_path, dest_path))
 			args = ['cp', src_path, dest_path]
 			subprocess.run(args)
-
-			# Check if @dest is a directory or path
-			#   If path, check that it exists, prompt if to replace
-			#   If dir, check that dirs exists, prompt if not
-			#     then copy filename from source and check if exists, prompt if to replace
-			#   If dir then save path for future use
-			# Copy file
 
 		elif copy_what == 'split':
 			raise NotImplementedError
@@ -3102,17 +3098,31 @@ def __sync_list(args, d, d_sub, f_get_list, c_name, rss_ok, rowid, summary):
 			_c = c_name_alt or c_name
 
 			# Find RSS URL from the list page
-			if d_sub.Name == 'c':
-				url = RSSHelper.GetByPage('http://www.youtube.com/c/%s' % _c)
-			elif d_sub.Name == 'ch':
-				url = RSSHelper.GetByPage('http://www.youtube.com/channel/%s' % _c)
-			elif d_sub.Name == 'u':
-				url = RSSHelper.GetByPage('http://www.youtube.com/user/%s' % _c)
-			elif d_sub.Name == 'pl':
-				# Playlists don't have RSS feeds
-				url = False
-			else:
-				raise Exception("Unrecognized list type")
+			cnt = 0
+			while cnt < 10:
+				try:
+					if d_sub.Name == 'c':
+						url = RSSHelper.GetByPage('http://www.youtube.com/c/%s' % _c)
+					elif d_sub.Name == 'ch':
+						url = RSSHelper.GetByPage('http://www.youtube.com/channel/%s' % _c)
+					elif d_sub.Name == 'u':
+						url = RSSHelper.GetByPage('http://www.youtube.com/user/%s' % _c)
+					elif d_sub.Name == 'pl':
+						# Playlists don't have RSS feeds
+						url = False
+					else:
+						raise Exception("Unrecognized list type")
+
+					break
+				except requests.exceptions.ReadTimeout:
+					# Try 10 times
+					cnt += 1
+					print("Trying again %d of 10" % cnt)
+					continue
+
+				except Exception:
+					# Re-raise the unrecognized list type exception
+					raise
 
 			if url:
 				print("\t\tFound RSS from list page, saving to DB (%s)" % url)
