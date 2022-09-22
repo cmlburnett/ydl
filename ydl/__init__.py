@@ -586,6 +586,9 @@ class db(SH):
 
 			# Free text added to describe how to fix downloading this video, manually added
 			DBCol('fixcomments', 'text'),
+
+			# String to pass to set a custom format (id or id+id)
+			DBCol('videoformat', 'text'),
 		),
 		# Manually set file names on some as standard ascii translation
 		# may make completely gibberish names
