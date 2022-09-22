@@ -3230,19 +3230,29 @@ def __sync_list(args, d, d_sub, f_get_list, c_name, rss_ok, rowid, summary):
 			rss_ok = False
 		else:
 			print("\t\tChecking RSS (%s)" % url)
-			ret = RSSHelper.ParseRSS_YouTube(url)
-			if ret:
-				present = []
+			cnt = 0
+			while cnt < 10:
+				try:
+					ret = RSSHelper.ParseRSS_YouTube(url)
+					if ret:
+						present = []
 
-				# Save list of new YTID's
-				new = ret['ytids']
+						# Save list of new YTID's
+						new = ret['ytids']
 
-				for ytid in ret['ytids']:
-					row = d.vids.select_one('rowid', '`name`=? and `ytid`=?', [c_name_alt or c_name, ytid])
-					if not row:
-						print("\t\tRSS shows new videos, obtain full list")
-						rss_ok = False
-						break
+						for ytid in ret['ytids']:
+							row = d.vids.select_one('rowid', '`name`=? and `ytid`=?', [c_name_alt or c_name, ytid])
+							if not row:
+								print("\t\tRSS shows new videos, obtain full list")
+								rss_ok = False
+								break
+
+					break
+				except requests.exceptions.ReadTimeout:
+					# Try 10 times
+					cnt += 1
+					print("Trying again %d of 10" % cnt)
+					continue
 
 	# If rss_ok is still True at this point then no need to check pull list
 	# If rss_ok is False, then it was False before checking RSS or was set False for error reasons
