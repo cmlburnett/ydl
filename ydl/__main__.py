@@ -315,6 +315,7 @@ class YDL:
 		p.add_argument('--noautosleep', action='store_true', default=False, help="If video indicates it premiers in the future, it will automatically be added to the sleep list. Pass this to disable this. Default is to auto-sleep.")
 		p.add_argument('--info', nargs='*', default=False, help="Print out information about the video")
 		p.add_argument('--customformat', nargs='*', default=False, help="Set custom video format: supply YTID and format (eg '302+140')")
+		p.add_argument('--rename', nargs=2, default=False, help='Rename a channel (needed if the actual channel is renamed on YT)')
 
 		p.add_argument('--json', action='store_true', default=False, help="Dump output as JSON")
 		p.add_argument('--xml', action='store_true', default=False, help="Dump output as XML")
@@ -378,6 +379,9 @@ class YDL:
 		if self.args.fuse:
 			self.fuse()
 			sys.exit()
+
+		if type(self.args.rename) is list:
+			self.rename()
 
 		if type(self.args.hook) is list:
 			self.hook()
@@ -531,6 +535,95 @@ class YDL:
 
 			else:
 				print("No existing hooks")
+
+	def rename(self):
+		#self.db.begin()
+
+		print(self.args.rename)
+		name_old = self.args.rename[0]
+		name_new = self.args.rename[1]
+
+		# Ensure old name exists
+		# Ensure new name doesn't exist
+
+		# Update channel
+		#    c.name
+		#    ch.alias
+		#    ch.name
+		#    u.name
+		# Update v.name
+		# Update vids.name
+		# Update RSS.name
+		# Rename directory
+
+		self.db.begin()
+
+		o_old_user = self.db.get_user(name_old)
+		o_old_c = self.db.get_channel_named(name_old)
+		o_old_ch = self.db.get_channel_unnamed(name_old)
+
+		o_new_user = self.db.get_user(name_new)
+		o_new_c = self.db.get_channel_named(name_new)
+		o_new_ch = self.db.get_channel_unnamed(name_new)
+
+		print([o_old_user, o_old_c, o_old_ch])
+		print([o_new_user, o_new_c, o_new_ch])
+
+		f_old = any([o_old_user, o_old_c, o_old_ch])
+		f_new = any([o_new_user, o_new_c, o_new_ch])
+
+		p_old = os.path.join(os.getcwd(), name_old)
+		p_new = os.path.join(os.getcwd(), name_new)
+
+		# Can't ahndle sym linked yet
+		p_real_old = os.path.realpath(p_old)
+		if p_old != p_real_old:
+			raise NotImplementedError("Directory '%s' is sym linked to '%s', need to implement that" % (p_old, p_real_old))
+
+
+		if not f_old:
+			print("Channel/user '%s' not found, cannot rename" % name_old)
+			sys.exit()
+
+		if f_new:
+			print("Channe/user '%s' renaming to '%s' but new name already exists, cannot rename" % (name_old, name_new))
+			sys.exit()
+
+		if o_old_user:
+			# Rename user
+			raise NotImplementedError()
+
+		elif o_old_c:
+			# Rename named channel
+			try:
+				# Rename the video list for the channel
+				print("Updating `vids` table")
+				self.db.vids.update({'name': name_old}, {'name': name_new})
+				# Rename the channel on each video
+				print("Updating `v` table")
+				self.db.v.update({'dname': name_old}, {'dname': name_new})
+				# Rename the channel record
+				print("Updating `c` table")
+				self.db.c.update({'name': name_old}, {'name': name_new})
+				# Delete old RSS url, will fetch new when syncing next time
+				print("Updating `RSS` table")
+				self.db.RSS.delete({'typ': 'c', 'name': name_old})
+
+				# Rename the directory on disk to the new name
+				print("Renaming directory %s to %s" % (p_old, p_new))
+				os.rename(p_old, p_new)
+			except:
+				self.db.rollback()
+			finally:
+				self.db.commit()
+
+		elif o_old_ch:
+			# Rename unnamed channel
+			# Check if renaming just the alias
+			raise NotImplementedError()
+
+		else:
+			raise Exception("Not sure how it got here, renaming '%s' to '%s'" % (name_old, name_new))
 
 	def add(self):
 		# Processing list of URLs
