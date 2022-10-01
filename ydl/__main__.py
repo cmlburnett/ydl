@@ -2918,10 +2918,14 @@ class YDL:
 			print("\t\tYnrecognized YTID, aborting")
 			return
 
+		# Reset input
+		readline.set_startup_hook(lambda: readline.insert_text(''))
+
 		print("\t\tChannel: %s" % row['dname'])
 		print("\t\tTitle: %s" % row['title'])
 
 		src_path = self.db.get_v_fname(ytid)
+		orig_src_path = src_path
 		print("\t\tSource: %s" % src_path)
 
 		if not os.path.exists(src_path):
@@ -2957,8 +2961,10 @@ class YDL:
 			copy_what = 'original'
 		elif ret == 'c':
 			copy_what = 'chapterized'
+			src_path = p
 		elif ret == 's':
 			copy_what = 'split'
+			src_path = s
 		else:
 			raise Exception("Unexpected input: '%s'" % copy_what)
 
@@ -3032,7 +3038,7 @@ class YDL:
 				self.db.commit()
 
 			# Split off the file name to @src_fname and assume destination file name will be the same
-			src_fname = os.path.split(src_path)[-1]
+			src_fname = os.path.split(orig_src_path)[-1]
 			dest_fname = src_fname
 
 			# Get destination file name
