@@ -2943,11 +2943,11 @@ class YDL:
 
 		# Check which to copy, if no chapterized or split then assume the original
 		if exists_p and exists_s:
-			ret = inputopts("What to copy? (O)riginal, (C)hapterized, (S)plit")
+			ret = inputopts("What to copy? (O)riginal, (C)hapterized, (S)plit ")
 		elif exists_p:
-			ret = inputopts("What to copy? (O)riginal, (C)hapterized")
+			ret = inputopts("What to copy? (O)riginal, (C)hapterized ")
 		elif exists_s:
-			ret = inputopts("What to copy? (O)riginal, (S)plit")
+			ret = inputopts("What to copy? (O)riginal, (S)plit ")
 		else:
 			print("\t\tCopying original, no chapterized or split found")
 			ret = 'o'
