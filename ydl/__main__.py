@@ -3815,7 +3815,6 @@ def _download_actual(d, ytid, fname, dname, rate=None, autosleep=True, video_for
 					raise
 
 	except youtube_dl.utils.DownloadError as e:
-		traceback.print_exc()
 		txt = str(e)
 		if 'Video unavailable' in txt:
 			d.begin()
@@ -3836,7 +3835,7 @@ def _download_actual(d, ytid, fname, dname, rate=None, autosleep=True, video_for
 			d.commit()
 			return None
 		elif 'live video' in txt:
-			print("\t\tVide is live, sleeping for a bit if autosleep enabled")
+			print("\t\tVideo is live, sleeping for a bit if autosleep enabled")
 
 		if autosleep:
 			if 'begin in a few moments' in txt:
@@ -3852,6 +3851,7 @@ def _download_actual(d, ytid, fname, dname, rate=None, autosleep=True, video_for
 				print("\t\tAutosleeping live video for 2 hours")
 				parts = txt.split('live video for ')
 			else:
+				traceback.print_exc()
 				print("Unrecognized time (%s), arbitrarily pcking one day" % txt)
 				parts = ['', '1 day']
 
@@ -3882,6 +3882,7 @@ def _download_actual(d, ytid, fname, dname, rate=None, autosleep=True, video_for
 			return None
 
 		else:
+			traceback.print_exc()
 			return None
 	except KeyboardInterrupt:
 		# Didn't complete download
