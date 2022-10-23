@@ -2374,7 +2374,10 @@ class YDL:
 
 			print(dat[ytid]['chapters'])
 
-			if not os.path.exists(fname_chaps):
+			# NB: used to not replace the XML, but if chapters are modified then it wouldn't update the XML file
+			# so just write it every time
+			#if not os.path.exists(fname_chaps):
+			if True:
 				# Create chapters XML
 				cxml = mkvxmlmaker.MKVXML_chapter()
 				for v in dat[ytid]['chapters']:
