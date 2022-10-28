@@ -146,6 +146,7 @@ def _rename_files(dname, ytid, newname, old_dname=None):
 		fs2 = glob.glob("%s/%s/.*%s*" % (old_dname, ytid[0], ytid))
 		fs = fs + fs2
 
+		print("\t\tChange directories")
 		for f in fs:
 			# Change directory name
 			dest = dname + '/' + f.split('/',1)[1]
@@ -339,7 +340,7 @@ class YDL:
 
 		p.add_argument('--merge-playlist', default=False, nargs='+', help="Merge a playlist into a single video file with each video entry as a chapter")
 
-		p.add_argument('--chapter-edit', default=False, nargs=1, help="Edit chapters for the given video file")
+		p.add_argument('--chapter-edit', default=False, nargs='+', help="Edit chapters for the given video file(s)")
 		p.add_argument('--chapterize', default=False, nargs='+', help="Add chapters to a file. Must use --chapter-edit first to provide chapter information, then --chapterize the video.")
 		p.add_argument('--split', default=False, nargs=3, help="Split video into the specified output file type (eg, mkv for video, mp3:128kbps, mp3:320kbps, ogg:8.0) and the output string format (can use standard python string formatting with {artist}, {album}, {N}, {total}, {year}, {genre}, {ytid}, {name}). Must use --chapter-edit first to provide the chapter information, then --split the video. Use --convert to do the entire video into a single file.")
 		p.add_argument('--convert', default=False, nargs=3, help="Convert video into the specified output file type (eg, mp3:128kbps, ogg:8.0) and the output string format (can use standard python string formatting with {artist}, {album}, {N}, {total}, {year}, {genre}, {ytid}, {name}). Use --split to dice up into multiple files, or --convert for the entire video in one.")
@@ -2203,7 +2204,7 @@ class YDL:
 						z = json.loads(z)
 						print(z['description'])
 
-				elif z == 'C':
+				elif z == 'c':
 					break
 				elif z == 'q':
 					sys.exit(0)
