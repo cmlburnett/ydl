@@ -368,7 +368,7 @@ class YDL:
 		self.db = ydl.db(os.getcwd() + '/' + self.args.file)
 		self.db.open()
 
-		# Do any verification of the database here
+		# TODO: Do any verification of the database here
 
 	def main(self):
 		""" Main function called from invoking the library """
@@ -538,8 +538,6 @@ class YDL:
 				print("No existing hooks")
 
 	def rename(self):
-		#self.db.begin()
-
 		print(self.args.rename)
 		name_old = self.args.rename[0]
 		name_new = self.args.rename[1]
@@ -636,6 +634,9 @@ class YDL:
 			vals = self.args.add
 
 		for url in vals:
+			# Trim off the /videos to the end if it's there
+			if url.endswith('/videos'):
+				url = url[:-len('videos')]
 			u = urllib.parse.urlparse(url)
 
 			if u.scheme != 'https':
@@ -676,6 +677,7 @@ class YDL:
 
 			if u.path.startswith('/c/'):
 				q = u.path.split('/')
+				print(q)
 				if len(q) != 3 and (len(q) == 4 and q[-1] != ''):
 					print(url)
 					print("\t" + "Channel URL expected to have a channel name after /c/")
