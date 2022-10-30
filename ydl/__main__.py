@@ -1589,6 +1589,9 @@ class YDL:
 		skipped = 0
 		sleeping = 0
 
+		# Remove trailing slashes
+		ytids = [_.rstrip('/') for _ in ytids]
+
 		ytids_str = list_to_quoted_csv(ytids)
 
 		# Get video data for all the videos supplied
@@ -1715,6 +1718,9 @@ class YDL:
 		filt = None
 		if type(self.args.sync) is list:		filt = self.args.sync
 		if type(self.args.sync_list) is list:	filt = self.args.sync_list
+
+		# Remove trailing slashes
+		filt = [_.rstrip('/') for _ in filt]
 
 		z = [
 			(self.db.u, 'name', ydl.get_list_user),
