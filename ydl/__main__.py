@@ -677,7 +677,6 @@ class YDL:
 
 			if u.path.startswith('/c/'):
 				q = u.path.split('/')
-				print(q)
 				if len(q) != 3 and (len(q) == 4 and q[-1] != ''):
 					print(url)
 					print("\t" + "Channel URL expected to have a channel name after /c/")
