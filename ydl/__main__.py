@@ -480,6 +480,10 @@ class YDL:
 			self.copy_file()
 
 	def hook(self):
+		"""
+		Add a hook module or list them if no argument provided.
+		"""
+
 		self.db.begin()
 
 		ret = self.db.get_hook()
@@ -509,6 +513,10 @@ class YDL:
 				print("No existing hooks")
 
 	def unhook(self):
+		"""
+		Remove a hook module or list hooks if no argument provided.
+		"""
+
 		self.db.begin()
 
 		ret = self.db.get_hook()
@@ -557,10 +565,13 @@ class YDL:
 
 		self.db.begin()
 
+		# Given the old name, have to find if it's a user or named/unnamed channel
+		# TODO: fix for aliased channels
 		o_old_user = self.db.get_user(name_old)
 		o_old_c = self.db.get_channel_named(name_old)
 		o_old_ch = self.db.get_channel_unnamed(name_old)
 
+		# Check that new name is not already taken
 		o_new_user = self.db.get_user(name_new)
 		o_new_c = self.db.get_channel_named(name_new)
 		o_new_ch = self.db.get_channel_unnamed(name_new)
@@ -568,13 +579,15 @@ class YDL:
 		print([o_old_user, o_old_c, o_old_ch])
 		print([o_new_user, o_new_c, o_new_ch])
 
+		# Flag is true if that name was found
 		f_old = any([o_old_user, o_old_c, o_old_ch])
 		f_new = any([o_new_user, o_new_c, o_new_ch])
 
+		# Get old and potential new path
 		p_old = os.path.join(os.getcwd(), name_old)
 		p_new = os.path.join(os.getcwd(), name_new)
 
-		# Can't ahndle sym linked yet
+		# Can't handle sym linked yet
 		p_real_old = os.path.realpath(p_old)
 		if p_old != p_real_old:
 			raise NotImplementedError("Directory '%s' is sym linked to '%s', need to implement that" % (p_old, p_real_old))
@@ -625,14 +638,20 @@ class YDL:
 			raise Exception("Not sure how it got here, renaming '%s' to '%s'" % (name_old, name_new))
 
 	def add(self):
+		"""
+		Add a new channel to the list.
+		"""
+
 		# Processing list of URLs
 		urls = []
 
+		# Read URLs from the STDIN or argument values
 		if self.args.stdin:
 			vals = [_.strip() for _ in sys.stdin.readlines()]
 		else:
 			vals = self.args.add
 
+		# Iterate through urls and check them
 		for url in vals:
 			# Trim off the /videos to the end if it's there
 			if url.endswith('/videos'):
@@ -696,6 +715,7 @@ class YDL:
 
 		self.db.begin()
 
+		# Handle each URL
 		for i,u in enumerate(urls):
 			print("%d of %d: %s" % (i+1, len(urls), u[1]))
 
@@ -777,15 +797,24 @@ class YDL:
 		self.db.commit()
 
 	def info(self):
+		"""
+		Get the info for the entire database, or specific videos.
+		"""
+
 		if not len(self.args.info):
 			self.info_db()
 		else:
 			self.info_videos()
 
 	def info_db(self):
+		"""
+		Get the info for the entire database.
+		"""
+
 		# Prune any sleeping videos
 		pruned = self._prunesleep()
 
+		# Get number of named/unnamed channels, users, and playlists
 		cs = self.db.c.num_rows()
 		chs = self.db.ch.num_rows()
 		us = self.db.u.num_rows()
@@ -817,6 +846,7 @@ class YDL:
 
 		print("Calculating disk space used...")
 
+		# NB: takes a long time
 		args = ['du', '-b', '-s', os.path.dirname(self.db.Filename)]
 		s = subprocess.run(args, stdout=subprocess.PIPE)
 		line = s.stdout.decode('ascii').split()
@@ -824,6 +854,10 @@ class YDL:
 		print("\t%d bytes (%s)" % (sz, bytes_to_str(sz)))
 
 	def info_videos(self):
+		"""
+		Get info on specific videos or channels, etc
+		"""
+
 		ytids = self.args.info
 		print("Showing information for videos (%d):" % len(ytids))
 
@@ -921,6 +955,10 @@ class YDL:
 			print("\t%s -- NOT FOUND" % ytid)
 
 	def info_v(self, ytid, row):
+		"""
+		Get infor for a single video.
+		"""
+
 		pruned = self._prunesleep()
 
 		row = self.db.v.select_one('*', '`ytid`=?', [ytid])
@@ -1027,6 +1065,13 @@ class YDL:
 			print_2col(inf)
 
 	def customformat(self):
+		"""
+		By default, the audio & video downloaded is whatever youtube has as the default.
+		However, you may wish to choose differently.
+		A single argument will print the available formats.
+		A second argument is the video+audio formats desired or an empty string to delete the set custom format.
+		"""
+
 		pruned = self._prunesleep()
 
 		if len(self.args.customformat) == 1:
