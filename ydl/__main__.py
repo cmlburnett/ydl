@@ -1263,7 +1263,10 @@ class YDL:
 			self.db.begin()
 			print("Marking videos to not skip (%d):" % len(v_ytids))
 			for ytid in v_ytids:
-				print("\t%s" % ytids)
+				if ytid[0] == '=':
+					ytid = '-' + ytid[1:]
+
+				print("\t%s" % ytid)
 				row = self.db.v.select_one("rowid", "`ytid`=?", [ytid])
 				self.db.v.update({"rowid": row['rowid']}, {"skip": False})
 
@@ -2963,8 +2966,13 @@ class YDL:
 	def copy_file(self):
 		pruned = self._prunesleep()
 
+		ytids = list(self.args.copy)
+
+		# I don't know how to get argparse to ignore YTID's that start with a dash, so instead use = sign and substitute now
+		ytids = ['-' + _[1:] for _ in ytids if _[0] == '='] + [_ for _ in ytids if _[0] != '=']
+
 		print("Copy %d files" % len(self.args.copy))
-		for ytid in self.args.copy:
+		for ytid in ytids:
 			self.copy_file_ytid(ytid)
 
 	def copy_file_ytid(self, ytid):
