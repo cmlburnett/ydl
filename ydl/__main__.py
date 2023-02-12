@@ -1721,7 +1721,7 @@ class YDL:
 		rows = sorted(rows, key=lambda _: _[col_name])
 
 
-		print("%s (%d):" % (sub_d.Name, len(rows)))
+		print("%s (%d):" % (sub_d.DBName, len(rows)))
 		for row in rows:
 			sub_res = self.db.vids.select(["rowid","ytid"], "`name`=?", [row[col_name]], "`idx` asc")
 			sub_rows = [dict(_) for _ in sub_res]
@@ -1778,12 +1778,12 @@ class YDL:
 		]
 
 		for d_sub, col_name, ydl_func in z:
-			print("Update %s" % d_sub.Name)
+			print("Update %s" % d_sub.DBName)
 
 			rss_ok = not self.args.no_rss
 
 			# Not applicable to playlists (no RSS)
-			if d_sub.Name == 'pl':
+			if d_sub.DBName == 'pl':
 				rss_ok = False
 
 			_sync_list(self.args, self.db, d_sub, filt, col_name, self.args.ignore_old, rss_ok, ydl_func)
@@ -3160,7 +3160,7 @@ def _sync_list(args, d, d_sub, filt, col_name, ignore_old, rss_ok, ydl_func):
 	where = ""
 	if type(filt) is list and len(filt):
 		# FIXME: need to pass by value
-		if d_sub.Name == 'ch':
+		if d_sub.DBName == 'ch':
 			where = "`{0}` in ({1}) OR `alias` in ({1})".format(col_name, list_to_quoted_csv(filt))
 		else:
 			where = "`%s` in (%s)" % (col_name, list_to_quoted_csv(filt))
@@ -3232,10 +3232,10 @@ def __sync_list(args, d, d_sub, f_get_list, c_name, rss_ok, rowid, summary):
 	c_name_alt = None
 
 	# Print the name out to show progress
-	if d_sub.Name == 'ch':
+	if d_sub.DBName == 'ch':
 		row = d_sub.select_one('alias', "`rowid`=?", [rowid])
 		c_name_alt = row[0]
-	elif d_sub.Name == 'pl':
+	elif d_sub.DBName == 'pl':
 		row = d_sub.select_one('skip', "`rowid`=?", [rowid])
 		if row['skip']:
 			print("\t%s SKIPPED" % c_name)
@@ -3253,7 +3253,7 @@ def __sync_list(args, d, d_sub, f_get_list, c_name, rss_ok, rowid, summary):
 	# If ok to check RSS, start there and if all video sthere are in the database
 	# then no need to pull down the full list
 	if rss_ok:
-		row = d.RSS.select_one("url", "`typ`=? and `name`=?", [d_sub.Name, c_name])
+		row = d.RSS.select_one("url", "`typ`=? and `name`=?", [d_sub.DBName, c_name])
 		if row:
 			# Found RSS url, just use that
 			url = row['url']
@@ -3264,13 +3264,13 @@ def __sync_list(args, d, d_sub, f_get_list, c_name, rss_ok, rowid, summary):
 			cnt = 0
 			while cnt < 10:
 				try:
-					if d_sub.Name == 'c':
+					if d_sub.DBName == 'c':
 						url = RSSHelper.GetByPage('http://www.youtube.com/c/%s' % _c)
-					elif d_sub.Name == 'ch':
+					elif d_sub.DBName == 'ch':
 						url = RSSHelper.GetByPage('http://www.youtube.com/channel/%s' % _c)
-					elif d_sub.Name == 'u':
+					elif d_sub.DBName == 'u':
 						url = RSSHelper.GetByPage('http://www.youtube.com/user/%s' % _c)
-					elif d_sub.Name == 'pl':
+					elif d_sub.DBName == 'pl':
 						# Playlists don't have RSS feeds
 						url = False
 					else:
@@ -3290,7 +3290,7 @@ def __sync_list(args, d, d_sub, f_get_list, c_name, rss_ok, rowid, summary):
 			if url:
 				print("\t\tFound RSS from list page, saving to DB (%s)" % url)
 				d.begin()
-				d.RSS.insert(typ=d_sub.Name, name=_c, url=url, atime=_now())
+				d.RSS.insert(typ=d_sub.DBName, name=_c, url=url, atime=_now())
 				d.commit()
 
 		# Check that url was found
