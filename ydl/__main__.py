@@ -840,7 +840,7 @@ class YDL:
 		print("\t\tSleeping: %d" % vs)
 		print("\t\tSleeping just pruned: %d" % len(pruned))
 
-		row = self.db.execute("select sum(duration) as duration from v").fetchone()
+		row = self.db.execute('v', 'select', "select sum(duration) as duration from v").fetchone()
 		days = row['duration'] / (60*60*24.0)
 		print("\t\tTotal duration: %s (%.2f days)" % (sec_str(row['duration']), days))
 
@@ -878,7 +878,7 @@ class YDL:
 				rows = [dict(_) for _ in rows]
 				rows = sorted(rows, key=lambda x: x['ytid'])
 
-				row = self.db.execute("select sum(duration) as duration from v where `dname`=?", (ytid,)).fetchone()
+				row = self.db.execute('v', 'select', "select sum(duration) as duration from v where `dname`=?", (ytid,)).fetchone()
 				days = row['duration'] / (60*60*24.0)
 				print("\t\tTotal duration: %s (%.2f days)" % (sec_str(row['duration']), days))
 				print()
@@ -897,7 +897,7 @@ class YDL:
 				rows = [dict(_) for _ in rows]
 				rows = sorted(rows, key=lambda x: x['ytid'])
 
-				row = self.db.execute("select sum(duration) as duration from v where `dname`=?", (ytid,)).fetchone()
+				row = self.db.execute('v', 'select', "select sum(duration) as duration from v where `dname`=?", (ytid,)).fetchone()
 				days = row['duration'] / (60*60*24.0)
 				print("\t\tTotal duration: %s (%.2f days)" % (sec_str(row['duration']), days))
 				print()
@@ -916,7 +916,7 @@ class YDL:
 				rows = [dict(_) for _ in rows]
 				rows = sorted(rows, key=lambda x: x['ytid'])
 
-				row = self.db.execute("select sum(duration) as duration from v where `dname`=?", (ytid,)).fetchone()
+				row = self.db.execute('v', 'select', "select sum(duration) as duration from v where `dname`=?", (ytid,)).fetchone()
 				days = row['duration'] / (60*60*24.0)
 				print("\t\tTotal duration: %s (%.2f days)" % (sec_str(row['duration']), days))
 				print()
@@ -935,7 +935,7 @@ class YDL:
 				rows = [dict(_) for _ in rows]
 				rows = sorted(rows, key=lambda x: x['ytid'])
 
-				row = self.db.execute("select sum(duration) as duration from v where `dname`=?", (ytid,)).fetchone()
+				row = self.db.execute('v', 'select', "select sum(duration) as duration from v where `dname`=?", (ytid,)).fetchone()
 				if row['duration'] is None:
 					duration = 0
 					days = 0.0
@@ -990,9 +990,9 @@ class YDL:
 
 		inf = [
 			['YTID', row['ytid']],
-			['Title', row['title']],
+			['Title', row['title'].replace('%', '%%')],
 			['Duration (HH:MM:SS)', dur],
-			['Name', row['name']],
+			['Name', row['name'].replace('%', '%%')],
 			['Directory Name', row['dname']],
 			['Uploader', row['uploader']],
 			['Upload Time', row['ptime']],
@@ -1001,7 +1001,7 @@ class YDL:
 			['Update Time', row['utime']],
 			['Skip?', row['skip']],
 			['Sleeping?', sleep],
-			['Path', path],
+			['Path', path.replace('%', '%%')],
 			['Exists?', exists],
 			['Size', size],
 			['Custom Format', row['videoformat']],
@@ -1430,7 +1430,7 @@ class YDL:
 			print("")
 		elif len(self.args.unsleep) == 1 and self.args.unsleep[0] == '*':
 			self.db.begin()
-			self.db.execute('delete from v_sleep')
+			self.db.execute('v_sleep', 'delete', 'delete from v_sleep')
 			self.db.commit()
 
 		else:
@@ -1869,7 +1869,8 @@ class YDL:
 		if skip:
 			print("\t\tSkipping")
 			# This marks it as at least looked at, otherwise repeated --sync --ignore-old will keep checking
-			self.db.v.update({"rowid": rowid}, {"atime": _now()})
+			with self.db.transaction():
+				self.db.v.update({"rowid": rowid}, {"atime": _now()})
 			return None
 
 		# Get video information
@@ -3376,73 +3377,76 @@ def __sync_list_full(args, d, d_sub, f_get_list, summary, c_name, c_name_alt, ne
 		else:
 			weird_diff = []
 
-		d.begin()
+		try:
+			d.begin()
 
-		# At least one is new
-		if all_old and not args.force:
-			if weird_diff:
-				print("\t\tFound videos in RSS but not in video list, probably upcoming videos (%d)" % len(weird_diff))
-				for _ in weird_diff:
-					print("\t\t\t%s" % _)
+			# At least one is new
+			if all_old and not args.force:
+				if weird_diff:
+					print("\t\tFound videos in RSS but not in video list, probably upcoming videos (%d)" % len(weird_diff))
+					for _ in weird_diff:
+						print("\t\t\t%s" % _)
 
-					# Ensure items are in the database
-					if d.vids.select_one('rowid', '`ytid`=?', [_]) is None:
-						d.vids.insert(name=(c_name_alt or c_name), ytid=_, idx=-1, atime=_now())
-					if d.v.select_one('rowid', '`ytid`=?', [_]) is None:
-						d.v.insert(ytid=_, ctime=None, atime=None, dname=(c_name_alt or c_name), skip=False)
-			else:
-				print("\t\tAll are old, no updates")
-
-		else:
-			# Update or add video to list in vids table
-			for v in cur['info']:
-				# Update old index
-				if v['ytid'] in old:
-					#print("\t\t%d: %s (OLD)" % (v['idx'], v['ytid']))
-					d.vids.update({'rowid': old[v['ytid']]}, {'idx': v['idx'], 'atime': _now()})
-
-					# Remove from the old list (anything not removed will be considered deleted from the list)
-					del old[v['ytid']]
+						# Ensure items are in the database
+						if d.vids.select_one('rowid', '`ytid`=?', [_]) is None:
+							d.vids.insert(name=(c_name_alt or c_name), ytid=_, idx=-1, atime=_now())
+						if d.v.select_one('rowid', '`ytid`=?', [_]) is None:
+							d.v.insert(ytid=_, ctime=None, atime=None, dname=(c_name_alt or c_name), skip=False)
 				else:
-					print("\t\t%d: %s (NEW)" % (v['idx'], v['ytid']))
-					d.vids.insert(name=(c_name_alt or c_name), ytid=v['ytid'], idx=v['idx'], atime=_now())
+					print("\t\tAll are old, no updates")
 
-			# Remove all old entries that are no longer on the list by setting index to -1
-			# Don't delete so that there retains a mapping of video to original owning list
-			for ytid,rowid in old.items():
-				d.vids.update({'rowid': '?'}, {'idx': -1})
+			else:
+				# Update or add video to list in vids table
+				for v in cur['info']:
+					# Update old index
+					if v['ytid'] in old:
+						#print("\t\t%d: %s (OLD)" % (v['idx'], v['ytid']))
+						d.vids.update({'rowid': old[v['ytid']]}, {'idx': v['idx'], 'atime': _now()})
 
-			# Update or add video to the global videos list
-			for v in cur['info']:
-				title = v.get('title', None)
-				name = title_to_name(title)
+						# Remove from the old list (anything not removed will be considered deleted from the list)
+						del old[v['ytid']]
+					else:
+						print("\t\t%d: %s (NEW)" % (v['idx'], v['ytid']))
+						d.vids.insert(name=(c_name_alt or c_name), ytid=v['ytid'], idx=v['idx'], atime=_now())
 
-				# Attempt update then fall back to insert if that fails (eg, rowcount==0)
-				r = d.v.update({'ytid': v['ytid']}, {'atime': None, 'title': title, 'name': name})
-				if r.rowcount == 0:
-					n = _now()
-					# FIXME: dname is whatever list adds it first, but should favor
-					# the channel. Can happen if a playlist is added first, then the channel
-					# the video is on is added later.
-					r = d.v.insert(ytid=v['ytid'], ctime=n, atime=None, dname=(c_name_alt or c_name), title=title, name=name, skip=False)
+				# Remove all old entries that are no longer on the list by setting index to -1
+				# Don't delete so that there retains a mapping of video to original owning list
+				for ytid,rowid in old.items():
+					d.vids.update({'rowid': '?'}, {'idx': -1})
 
-		# upload playlist info
-		summary['info'][c_name] = {
-			'title': cur['title'],
-			'uploader': cur['uploader'],
-		}
+				# Update or add video to the global videos list
+				for v in cur['info']:
+					title = v.get('title', None)
+					name = title_to_name(title)
 
-		# Done with this list
-		if c_name not in summary['error']:
-			summary['done'].append(c_name)
+					# Attempt update then fall back to insert if that fails (eg, rowcount==0)
+					r = d.v.update({'ytid': v['ytid']}, {'atime': None, 'title': title, 'name': name})
+					if r.rowcount == 0:
+						n = _now()
+						# FIXME: dname is whatever list adds it first, but should favor
+						# the channel. Can happen if a playlist is added first, then the channel
+						# the video is on is added later.
+						r = d.v.insert(ytid=v['ytid'], ctime=n, atime=None, dname=(c_name_alt or c_name), title=title, name=name, skip=False)
 
-		d.commit()
+			# upload playlist info
+			summary['info'][c_name] = {
+				'title': cur['title'],
+				'uploader': cur['uploader'],
+			}
+
+			# Done with this list
+			if c_name not in summary['error']:
+				summary['done'].append(c_name)
+
+			d.commit()
+		except:
+			d.rollback()
+			raise
 
 	except Exception:
 		traceback.print_exc()
 		summary['error'].append(c_name)
 		# Continue onward, ignore errors
-		d.rollback()
 
 def download_videos(d, args, filt, ignore_old):
 	# Get total number of videos in the database
@@ -3895,6 +3899,12 @@ def _download_actual(d, ytid, fname, dname, rate=None, autosleep=True, video_for
 		elif 'Sign in to confirm your age' in txt:
 			d.begin()
 			print("\t\tVideo not available without signing in, marking skip")
+			d.v.update({"ytid": ytid}, {"skip": True})
+			d.commit()
+			return None
+		elif 'Private video' in txt:
+			d.begin()
+			print("\t\tVideo is private, can never download it, marking skip")
 			d.v.update({"ytid": ytid}, {"skip": True})
 			d.commit()
 			return None
