@@ -349,6 +349,7 @@ class YDL:
 		p.add_argument('--album', default=False, help="Set album, if splitting to audio file")
 		p.add_argument('--year', default=False, help="Set year, if splitting to audio file")
 		p.add_argument('--genre', default=False, help="Set genre, if splitting to audio file")
+		p.add_argument('--title', default=False, help="Set track title, used for --convert since only one title can be provided. Use --chapter-edit for --split titles.")
 		p.add_argument('--format-name', default=False, help="Format the name string (eg, '{N} {name}, if splitting to audio file")
 		#TODO: pull caption-language default from environmental variables (LANG, LANGUAGE)
 		p.add_argument('--caption-language', default="en", help="Specify the caption language to download. Comma-delimited if multiple. Empty string if all.")
@@ -472,6 +473,9 @@ class YDL:
 
 		if self.args.chapterize is not False:
 			self.chapterize()
+
+		if self.args.convert is not False:
+			self.convert()
 
 		if self.args.split is not False:
 			self.split()
@@ -2670,9 +2674,9 @@ class YDL:
 		print()
 
 		# Get arguments for splitting: YTID OUTPUT_FORMAT FILENAME_FORMAT
-		ytid = self.args.split[0]
-		fmt = self.args.split[1]
-		outfmt = self.args.split[2]
+		ytid = self.args.convert[0]
+		fmt = self.args.convert[1]
+		outfmt = self.args.convert[2]
 
 		# Unescape = to - for leading character
 		if ytid[0] == '=':
@@ -2734,7 +2738,7 @@ class YDL:
 		fname = dat[ytid]['path']
 
 		# Gather possible {fields} for formatting
-		z = {'N': 1, 'ytid': ytid, 'name': cname}
+		z = {'N': 1, 'ytid': ytid, 'name': dat[ytid]['title'], 'title': dat[ytid]['title']}
 		if self.args.artist:
 			z['artist'] = self.args.artist
 		if self.args.album:
@@ -2765,6 +2769,8 @@ class YDL:
 			parms['year'] = self.args.year
 		if self.args.genre:
 			parms['genre'] = self.args.genre
+		if self.args.title:
+			parms['title'] = self.args.title
 
 		self._tag_file(fmt, parms, dname + fname_out)
 
