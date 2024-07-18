@@ -2967,7 +2967,7 @@ class YDL:
 				print([type(ret), ret])
 				msg = "Download something: %s" % msg
 
-			pushover.Client(user=None, api='transcode').send_message(msg, title="ydl")
+			pushover.Client(user=None, api='ydl').send_message(msg, title="ydl")
 			print('notify: %s' % msg)
 
 	def copy_file(self):
