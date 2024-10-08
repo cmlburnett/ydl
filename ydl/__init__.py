@@ -1,5 +1,6 @@
 # Main work horse
-import youtube_dl
+#import youtube_dl
+import yt_dlp
 
 # System libraries
 import contextlib
@@ -25,7 +26,7 @@ class PaymentRequiredException(Exception): pass
 
 def ignore_livevideos(x):
 	if 'is_live' in x and x['is_live']:
-		raise youtube_dl.utils.DownloadError("Ignoring live video for 2 hours")
+		raise yt_dlp.utils.DownloadError("Ignoring live video for 2 hours")
 
 	return None
 
@@ -57,6 +58,7 @@ def download(ytid, name, dname, write_all_thumbnails=True, add_metadata=True, wr
 		'outtmpl': name,
 		'ratelimit': rate,
 		'retries': 10,
+		'fragment_retries': 1,
 		'verbose': True,
 	}
 
@@ -79,7 +81,8 @@ def download(ytid, name, dname, write_all_thumbnails=True, add_metadata=True, wr
 	if video_format is not None:
 		opts['format'] = video_format
 
-	with youtube_dl.YoutubeDL(opts) as dl:
+	#with yt_dlp.YoutubeDL(opts) as dl:
+	with yt_dlp.YoutubeDL(opts) as dl:
 		# Attempt download
 		cwd = os.getcwd()
 		try:
@@ -92,7 +95,7 @@ def download(ytid, name, dname, write_all_thumbnails=True, add_metadata=True, wr
 
 def download_group(*vid, write_all_thumbnails=True, add_metadata=True, writeinfojson=True, writedescription=True, writeannotations=True, skip_download=False, skip_if_exists=True, skip_if_fails=True, convert_mp3=False, rate=900000):
 	"""
-	Download from youtube using youtube_dl module.
+	Download from youtube using yt_dlp module.
 		@vid -- List of unnamed parameters that are considered entries to download
 		@write_all_thumbnails -- Writes video thumbnails
 		@add_metadata -- Saves metadata
@@ -155,12 +158,12 @@ def download_group(*vid, write_all_thumbnails=True, add_metadata=True, writeinfo
 				'outtmpl': fmkv,
 				'ratelimit': rate,
 			}
-			with youtube_dl.YoutubeDL(opts) as dl:
+			with yt_dlp.YoutubeDL(opts) as dl:
 				try:
 					# Attempt download
 					dl.download(['https://www.youtube.com/watch?v=%s'%ytid])
 
-				except youtube_dl.utils.DownloadError:
+				except yt_dlp.utils.DownloadError:
 					if skip_if_fails:
 						# If failed, add to list and continue onward
 						exc = sys.exc_info()
@@ -204,9 +207,9 @@ def get_info_video(ytid):
 	# Have to capture the standard output
 	try:
 		with capture() as capt:
-			with youtube_dl.YoutubeDL(opts) as dl:
+			with yt_dlp.YoutubeDL(opts) as dl:
 				dl.download(['https://www.youtube.com/watch?v=%s' % ytid])
-	except youtube_dl.utils.DownloadError as e:
+	except yt_dlp.utils.DownloadError as e:
 		if "requires payment" in str(e):
 			print("\t\tPayment required, skipping")
 			raise PaymentRequiredException
@@ -320,7 +323,7 @@ def get_list(*vid, getVideoInfo=True):
 		for i in range(3):
 			# Have to capture the standard output
 			with capture() as capt:
-				with youtube_dl.YoutubeDL(opts) as dl:
+				with yt_dlp.YoutubeDL(opts) as dl:
 					dl.download([url])
 
 			lines = capt[0]
@@ -395,7 +398,7 @@ def merge_playlist(*vid, rate=900000):
 		name -- Final merged file name base
 		chapters -- list of 2-tuples containing (time of chapter start as HH:MM:SS.ssss string, chapter name)
 
-	A directory is created based on @name, and youtube_dl is used to download the entire playlist into this directory.
+	A directory is created based on @name, and yt_dlp is used to download the entire playlist into this directory.
 	Each playlist item is saved as the index of the playlist (eg, 01.mkv, 02.mkv).
 	The files are merged into a single mkv '@NAME@.mkv'.
 	The chapter information is written to XML and then merged into the final output '@NAME@.chapters.mkv'.
@@ -440,7 +443,7 @@ def merge_playlist(*vid, rate=900000):
 					'outtmpl': '%(playlist_index)s',
 					'ratelimit': 900000,
 				}
-				with youtube_dl.YoutubeDL(opts) as dl:
+				with yt_dlp.YoutubeDL(opts) as dl:
 					dl.download(['http://www.youtube.com/playlist?list=%s' % ytid])
 
 				tomerge = glob.glob('*.mkv')

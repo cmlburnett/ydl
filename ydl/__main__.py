@@ -83,7 +83,7 @@ import urllib
 # Installed
 import requests
 import ydl
-import youtube_dl
+import yt_dlp
 
 import mkvxmlmaker
 
@@ -1727,7 +1727,7 @@ class YDL:
 
 		print("%s (%d):" % (sub_d.DBName, len(rows)))
 		for row in rows:
-			sub_res = self.db.vids.select(["rowid","ytid"], "`name`=?", [row[col_name]], "`idx` asc")
+			sub_res = self.db.vids.select(["rowid","ytid"], "`name`=?", [row[col_name]], "`atime` asc")
 			sub_rows = [dict(_) for _ in sub_res]
 			sub_cnt = len(sub_rows)
 
@@ -2516,13 +2516,15 @@ class YDL:
 			sys.exit(-1)
 
 		# Find a thumbnail
-		fname_thumb = fname.replace('.mkv', '_0.jpg')
+		fname_thumb = fname.replace('.mkv', '.jpg')
 		if not os.path.exists(fname_thumb):
-			fname_thumb = fname.replace('.mkv', '_1.jpg')
+			fname_thumb = fname.replace('.mkv', '_0.jpg')
 			if not os.path.exists(fname_thumb):
-				fname_thumb = fname.replace('.mkv', '_2.jpg')
+				fname_thumb = fname.replace('.mkv', '_1.jpg')
 				if not os.path.exists(fname_thumb):
-					fname_thmb = None
+					fname_thumb = fname.replace('.mkv', '_2.jpg')
+					if not os.path.exists(fname_thumb):
+						fname_thumb = None
 
 		# Save data
 		dat[ytid] = dict(row)
@@ -3730,12 +3732,12 @@ def _download_video_known(d, args, ytid, row, alias):
 	dname,info_fname = ydl.db.format_v_names(row['dname'], row['name'], alias, row['ytid'], suffix='info.json')
 	info_fname = dname + '/' + info_fname
 
-	# File name supplied to youtube_dl is without suffix
+	# File name supplied to yt_dlp is without suffix
 	dname,fname = ydl.db.format_v_names(row['dname'], row['name'], alias, row['ytid'])
 	# Full file name for checking file existence and size in case --if-small is given (Do this before escaping % signs)
 	fname_mkv = dname + '/' + fname + '.mkv'
 
-	# Have to escape the percent signs so youtube_dl doesn't assume it's a formatting variable
+	# Have to escape the percent signs so yt_dlp doesn't assume it's a formatting variable
 	fname = fname.replace('%', '%%')
 
 	print("\t\tDirectory: %s" % dname)
@@ -3853,7 +3855,7 @@ def _download_actual(d, ytid, fname, dname, rate=None, autosleep=True, video_for
 				break
 
 			# This is to all
-			except youtube_dl.utils.DownloadError as e:
+			except yt_dlp.utils.DownloadError as e:
 				txt = str(e)
 				if 'Network is unreachable' in txt:
 					if retry_count >= 10:
@@ -3888,7 +3890,7 @@ def _download_actual(d, ytid, fname, dname, rate=None, autosleep=True, video_for
 				else:
 					raise
 
-	except youtube_dl.utils.DownloadError as e:
+	except yt_dlp.utils.DownloadError as e:
 		txt = str(e)
 		if 'Video unavailable' in txt:
 			d.begin()
