@@ -300,7 +300,7 @@ class YDL:
 		p.add_argument('-f', '--file', default='ydl.db', help="use sqlite3 FILE (default ydl.db)")
 		p.add_argument('--stdin', action='store_true', default=False, help="Accept input on STDIN for parameters instead of arguments")
 		p.add_argument('--debug', choices=('debug','info','warning','error','critical'), default='error', help="Set logging level")
-		p.add_argument('--rate', nargs=1, default=[900000], type=int, help="Download rate in bps")
+		p.add_argument('--rate', nargs=1, default=[0], type=int, help="Download rate in bps")
 		p.add_argument('--loop', nargs=1, default=False, metavar="LOOP", help="Repeat invocation every LOOP value (if integer then assumed seconds, otherwise X.Xz for z is d/h/m/s for days/hours/minutes/seconds), if absent then executes once. Only meaningful for certain actions.")
 		p.add_argument('--delay', nargs=1, default=False, metavar="DELAY", help="Add a delay (in seconds) between requests to minimizing hammering of the site")
 
