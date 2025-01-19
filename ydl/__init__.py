@@ -60,6 +60,7 @@ def download(ytid, name, dname, write_all_thumbnails=True, add_metadata=True, wr
 		'retries': 10,
 		'fragment_retries': 1,
 		'verbose': True,
+		'force_ipv4': True,
 	}
 
 	if downloader is None:

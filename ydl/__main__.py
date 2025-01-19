@@ -302,6 +302,7 @@ class YDL:
 		p.add_argument('--debug', choices=('debug','info','warning','error','critical'), default='error', help="Set logging level")
 		p.add_argument('--rate', nargs=1, default=[900000], type=int, help="Download rate in bps")
 		p.add_argument('--loop', nargs=1, default=False, metavar="LOOP", help="Repeat invocation every LOOP value (if integer then assumed seconds, otherwise X.Xz for z is d/h/m/s for days/hours/minutes/seconds), if absent then executes once. Only meaningful for certain actions.")
+		p.add_argument('--delay', nargs=1, default=False, metavar="DELAY", help="Add a delay (in seconds) between requests to minimizing hammering of the site")
 
 		p.add_argument('--add', nargs='*', default=False, help="Add URL(s) to download")
 		p.add_argument('--name', nargs='*', default=False, help="Supply a YTID and file name to manually specify it")
@@ -325,7 +326,7 @@ class YDL:
 		p.add_argument('--if-small', action='store_true', default=False, help="Pass to --download if the file size is smaller than the largest, and will trigger forced download if so")
 
 		p.add_argument('--sync', nargs='*', default=False, help="Sync all metadata and playlists (does not download video data)")
-		p.add_argument('--sync-list', nargs='*', default=False, help="Sync just the lists (not videos)")
+		p.add_argument('--sync-list', nargs='*', default=False, help="Sync just the lists (not videos). Add --delay to add a delay between lists to avoid hammering the site.")
 		p.add_argument('--sync-videos', nargs='*', default=False, help="Sync just the videos (not lists)")
 		p.add_argument('--ignore-old', action='store_true', default=False, help="Ignore old list items and old videos")
 		p.add_argument('--skip-until', nargs=1, default=False, help="Skip until the given the given YT id is found")
@@ -994,9 +995,9 @@ class YDL:
 
 		inf = [
 			['YTID', row['ytid']],
-			['Title', row['title'].replace('%', '%%')],
+			['Title', (row['title'] or "").replace('%', '%%')],
 			['Duration (HH:MM:SS)', dur],
-			['Name', row['name'].replace('%', '%%')],
+			['Name', (row['name'] or "").replace('%', '%%')],
 			['Directory Name', row['dname']],
 			['Uploader', row['uploader']],
 			['Upload Time', row['ptime']],
@@ -1771,6 +1772,13 @@ class YDL:
 		if type(self.args.sync) is list:		filt = self.args.sync
 		if type(self.args.sync_list) is list:	filt = self.args.sync_list
 
+		# Get a delay
+		delay = 0.0
+		if type(self.args.delay) is list:
+			delay = float(self.args.delay[0])
+			if delay < 0:
+				raise ValueError("Delay cannot be negative")
+
 		# Remove trailing slashes
 		filt = [_.rstrip('/') for _ in filt]
 
@@ -1790,7 +1798,7 @@ class YDL:
 			if d_sub.DBName == 'pl':
 				rss_ok = False
 
-			_sync_list(self.args, self.db, d_sub, filt, col_name, self.args.ignore_old, rss_ok, ydl_func)
+			_sync_list(self.args, self.db, d_sub, filt, col_name, self.args.ignore_old, rss_ok, ydl_func, delay)
 
 	def sync_videos(self):
 		"""
@@ -3151,7 +3159,7 @@ class YDL:
 		else:
 			raise NotImplementedError
 
-def _sync_list(args, d, d_sub, filt, col_name, ignore_old, rss_ok, ydl_func):
+def _sync_list(args, d, d_sub, filt, col_name, ignore_old, rss_ok, ydl_func, delay):
 	"""
 	Sub helper function
 	@d -- main database object
@@ -3161,6 +3169,7 @@ def _sync_list(args, d, d_sub, filt, col_name, ignore_old, rss_ok, ydl_func):
 	@ignore_old -- only look at new stuff
 	@rss_ok -- can check list current-ness by using RSS
 	@ydl_func -- function in ydl library to call to sync the list
+	@delay -- time (in seconds) to delay between each list being synced, minimizes hammering the site
 
 	This calls __sync_list further.
 	"""
@@ -3207,6 +3216,8 @@ def _sync_list(args, d, d_sub, filt, col_name, ignore_old, rss_ok, ydl_func):
 	# Sync the lists
 	for c_name, rss_ok, rowid in rows:
 		__sync_list(args, d, d_sub, ydl_func, c_name, rss_ok, rowid, summary)
+		if delay and delay > 0:
+			time.sleep(delay)
 
 	print("\tDone: %d" % len(summary['done']))
 	print("\tSkip: %d" % len(summary['skip']))
