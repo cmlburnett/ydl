@@ -3215,7 +3215,9 @@ def _sync_list(args, d, d_sub, filt, col_name, ignore_old, rss_ok, ydl_func, del
 
 	# Sync the lists
 	for c_name, rss_ok, rowid in rows:
-		__sync_list(args, d, d_sub, ydl_func, c_name, rss_ok, rowid, summary)
+		# If returns False, don't add a delay (skipped or RSS is unchanged)
+		ret = __sync_list(args, d, d_sub, ydl_func, c_name, rss_ok, rowid, summary)
+		#if ret and delay and delay > 0:
 		if delay and delay > 0:
 			time.sleep(delay)
 
@@ -3260,7 +3262,7 @@ def __sync_list(args, d, d_sub, f_get_list, c_name, rss_ok, rowid, summary):
 		if row['skip']:
 			print("\t%s SKIPPED" % c_name)
 			summary['skip'].append(c_name)
-			return
+			return False
 
 	if c_name_alt:
 		print("\t%s -> %s" % (c_name, c_name_alt))
@@ -3344,14 +3346,15 @@ def __sync_list(args, d, d_sub, f_get_list, c_name, rss_ok, rowid, summary):
 					print("Trying again %d of 10" % cnt)
 					continue
 
-	# If rss_ok is still True at this point then no need to check pull list
+	# If rss_ok is still True at this point then no need to check full list
 	# If rss_ok is False, then it was False before checking RSS or was set False for error reasons
 	#  or (in particular) there are new videos to check
 	if rss_ok and not args.force:
-		return
+		return False
 	else:
 		# Fetch full list
 		__sync_list_full(args, d, d_sub, f_get_list, summary,   c_name, c_name_alt, new)
+		return True
 
 def __sync_list_full(args, d, d_sub, f_get_list, summary, c_name, c_name_alt, new):
 	"""
@@ -3561,6 +3564,9 @@ def download_videos(d, args, filt, ignore_old):
 		if ret == False:
 			return False
 		elif ret is None:
+			if args.delay and len(args.delay) and float(args.delay[0]) > 0:
+				time.sleep(float(args.delay[0]))
+
 			# Next video
 			continue
 
